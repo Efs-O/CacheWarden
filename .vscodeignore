@@ -7,6 +7,9 @@ tsconfig*.json
 
 # Icon source (only the rasterized icon.png + activity-bar icon.svg ship)
 images/icon-source.svg
+# GitHub social preview — repo-only, not part of the extension
+images/social-source.svg
+images/social-preview.png
 
 # Dev / project scaffolding
 .coordination/**

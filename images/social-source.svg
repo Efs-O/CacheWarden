@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2c2547"/>
+      <stop offset="1" stop-color="#13111d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.27" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff9a3c" stop-opacity="0.40"/>
+      <stop offset="0.6" stop-color="#ff7a18" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#ff7a18" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="arc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe1a3"/>
+      <stop offset="0.5" stop-color="#ffb347"/>
+      <stop offset="1" stop-color="#ff7a18"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1280" height="640" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1280" height="640" fill="url(#glow)"/>
+
+  <!-- ring mark -->
+  <g>
+    <circle cx="330" cy="320" r="120" fill="none" stroke="#3b3556" stroke-width="22"/>
+    <path d="M330,200 A120,120 0 1 1 210,320" fill="none" stroke="url(#arc)" stroke-width="22" stroke-linecap="round"/>
+    <line x1="330" y1="320" x2="282" y2="292" stroke="#fff4e6" stroke-width="14" stroke-linecap="round"/>
+    <line x1="330" y1="320" x2="396" y2="282" stroke="#fff4e6" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="330" cy="320" r="11" fill="#ff7a18"/>
+    <circle cx="330" cy="320" r="4" fill="#fff4e6"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="540" y="300" font-family="Segoe UI, Arial, sans-serif" font-size="96" font-weight="700" fill="#fff4e6">CacheWarden</text>
+  <text x="542" y="362" font-family="Segoe UI, Arial, sans-serif" font-size="38" font-weight="400" fill="#cfc9dd">Keep Claude Code's prompt cache warm.</text>
+  <text x="542" y="410" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="400" fill="#9a93ad">VS Code extension &#183; auto-ping before the 5-minute TTL</text>
+</svg>
