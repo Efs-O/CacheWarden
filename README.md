@@ -52,6 +52,30 @@ Do not emit natural-language prose.
 If the CLI requires a reply, emit only the inert marker [AW_KEEPALIVE_OK].
 ```
 
+## What it changes on your system
+
+CacheWarden is transparent about touching your Claude Code setup. When enabled it:
+
+- **Writes a hook into `~/.claude/settings.json`** — adds `Stop` and
+  `UserPromptSubmit` entries that run its keep-alive script. It only inserts/removes
+  its own entries and leaves your other hooks untouched. Disabling the extension
+  removes them.
+- **Installs a script at `~/.claude/cache-warden-keepalive.js`** — the keep-alive
+  runner, rewritten on each activation to match the installed version.
+- **Stores per-session state under `~/.claude/cache-warden/`** — countdown anchors
+  and ping counts, pruned automatically after 24h.
+- **Sends keep-alive turns to Claude Code** — each ping resumes your session
+  headlessly in a throwaway fork (with all hooks disabled), submits the inert
+  message above, then deletes the fork. These turns are real API calls; they
+  consume `cache_read` tokens (the point is to *avoid* the larger `cache_creation`
+  cost on your next message), and they count against your usage like any turn.
+
+Nothing leaves your machine beyond the normal Claude Code traffic, and removing the
+extension reverts all of the above.
+
+> **Status: pre-release / work in progress.** Actively developed and tested mainly
+> on Windows. Expect rough edges, and please file issues.
+
 ## Install
 
 **From VSIX:**
