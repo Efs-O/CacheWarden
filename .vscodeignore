@@ -1,8 +1,12 @@
 # Source & build inputs (only dist/ ships)
 src/**
 webview-ui/**
+scripts/**
 esbuild.config.mjs
 tsconfig*.json
+
+# Icon source (only the rasterized icon.png + activity-bar icon.svg ship)
+images/icon-source.svg
 
 # Dev / project scaffolding
 .coordination/**
