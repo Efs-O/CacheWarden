@@ -1,0 +1,10 @@
+node_modules/
+dist/
+out/
+*.vsix
+.coordination/
+.vscode/settings.json
+.claude/settings.json
+**/.DS_Store
+**/Thumbs.db
+*.log

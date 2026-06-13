@@ -1,0 +1,143 @@
+import React from 'react';
+
+interface SessionState {
+  id: string;
+  label: string;
+  armed: boolean;
+  keepAliveStreak: number;
+  keepAliveMaxPings: number;
+  secondsRemaining: number;
+  ttlSeconds: number;
+  pingsSentTotal: number;
+}
+
+interface Props {
+  session: SessionState;
+  onToggle: () => void;
+  onReset: () => void;
+  onPingNow: () => void;
+}
+
+function formatSeconds(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+export function SessionCard({ session, onToggle, onReset, onPingNow }: Props) {
+  const { label, armed, keepAliveStreak, keepAliveMaxPings, secondsRemaining, ttlSeconds, pingsSentTotal } = session;
+  const progress = ttlSeconds > 0 ? secondsRemaining / ttlSeconds : 0;
+  const timeStr = secondsRemaining === 0 ? 'expired' : formatSeconds(secondsRemaining);
+  const isExpired = secondsRemaining === 0;
+  const isCapped = keepAliveStreak >= keepAliveMaxPings;
+
+  const barColor = !armed
+    ? 'var(--vscode-disabledForeground)'
+    : isExpired || isCapped
+    ? 'var(--vscode-errorForeground)'
+    : secondsRemaining < 60
+    ? 'var(--vscode-notificationsWarningIcon-foreground)'
+    : 'var(--vscode-progressBar-background)';
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.header}>
+        <span style={styles.label}>
+          {label}
+          {!armed && <span style={styles.pausedBadge}>paused</span>}
+        </span>
+        <span style={{ ...styles.time, color: barColor }}>{timeStr}</span>
+      </div>
+
+      <div style={styles.barTrack}>
+        <div
+          style={{
+            ...styles.barFill,
+            width: `${Math.round(progress * 100)}%`,
+            background: barColor,
+          }}
+        />
+      </div>
+
+      <div style={styles.row}>
+        <button
+          style={{ ...styles.btn, ...(armed ? styles.btnOn : styles.btnOff) }}
+          onClick={onToggle}
+        >
+          {armed ? 'Cache Keep ON' : 'Cache Keep OFF'}
+        </button>
+        <button style={styles.btn} onClick={onReset}>Reset</button>
+        <button style={styles.btn} onClick={onPingNow}>Ping Now</button>
+      </div>
+
+      <div style={styles.meta}>
+        {keepAliveStreak}/{keepAliveMaxPings} consecutive pings &nbsp;·&nbsp; {pingsSentTotal} total
+      </div>
+    </div>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  card: {
+    border: '1px solid var(--vscode-panel-border)',
+    borderRadius: 4,
+    padding: '10px 12px',
+    marginBottom: 8,
+    background: 'var(--vscode-editor-background)',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  label: { fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 },
+  pausedBadge: {
+    fontSize: 9,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    padding: '1px 5px',
+    borderRadius: 8,
+    color: '#fff',
+    background: '#da3633',
+  },
+  time: { fontSize: 13, fontVariantNumeric: 'tabular-nums' },
+  barTrack: {
+    height: 4,
+    background: 'var(--vscode-scrollbarSlider-background)',
+    borderRadius: 2,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    borderRadius: 2,
+    transition: 'width 0.9s linear',
+  },
+  row: { display: 'flex', gap: 6, marginBottom: 6 },
+  btn: {
+    fontSize: 11,
+    padding: '3px 8px',
+    cursor: 'pointer',
+    background: 'var(--vscode-button-secondaryBackground)',
+    color: 'var(--vscode-button-secondaryForeground)',
+    border: '1px solid var(--vscode-button-border, transparent)',
+    borderRadius: 3,
+  },
+  btnOn: {
+    background: '#238636',
+    color: '#fff',
+    borderColor: '#2ea043',
+  },
+  btnOff: {
+    background: '#da3633',
+    color: '#fff',
+    borderColor: '#f85149',
+  },
+  meta: {
+    fontSize: 11,
+    opacity: 0.6,
+    color: 'var(--vscode-foreground)',
+  },
+};

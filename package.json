@@ -1,0 +1,142 @@
+{
+  "name": "cache-warden",
+  "displayName": "CacheWarden",
+  "description": "Keep your Anthropic prompt cache warm - auto-ping before the 5-minute TTL expires",
+  "version": "0.3.0",
+  "publisher": "Efsoo",
+  "author": "Efs-O",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Efs-O/CacheWarden#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Efs-O/CacheWarden.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Efs-O/CacheWarden/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude code",
+    "anthropic",
+    "prompt cache",
+    "keepalive",
+    "ai"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "CacheWarden",
+      "properties": {
+        "cacheWarden.ttlSeconds": {
+          "type": "number",
+          "default": 280,
+          "description": "Seconds of idle before firing a keepalive ping (default 4:40, 20s before the 5-min TTL)"
+        },
+        "cacheWarden.keepAliveDurationSeconds": {
+          "type": "number",
+          "default": 1800,
+          "description": "Stop pinging after this many seconds of total idle (default 30 min)"
+        },
+        "cacheWarden.keepAliveMaxPings": {
+          "type": "number",
+          "default": 7,
+          "description": "Maximum consecutive keepalive pings per idle session (~28 min coverage at 4-min intervals)"
+        },
+        "cacheWarden.targets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "claude"
+            ]
+          },
+          "default": [
+            "claude"
+          ],
+          "description": "Which Claude sidebar to watch"
+        },
+        "cacheWarden.hookEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Install the Claude Code Stop hook that automatically fires keepalive pings"
+        },
+        "cacheWarden.pingMethod": {
+          "type": "string",
+          "enum": [
+            "clipboard",
+            "notify"
+          ],
+          "default": "clipboard",
+          "description": "How CacheWarden prepares keepalive pings for the current chat sidebar"
+        },
+        "cacheWarden.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the cache countdown in the status bar"
+        },
+        "cacheWarden.claudePath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the Claude Code executable (the package's native binary, e.g. .../@anthropic-ai/claude-code/bin/claude.exe). Leave empty to auto-detect."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cacheWarden",
+          "title": "CacheWarden",
+          "icon": "images/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "cacheWarden": [
+        {
+          "type": "webview",
+          "id": "cacheWarden.panel",
+          "name": "Cache Sessions"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "cacheWarden.toggleArmed",
+        "title": "CacheWarden: Toggle Cache Keep"
+      },
+      {
+        "command": "cacheWarden.resetStreak",
+        "title": "CacheWarden: Reset Ping Streak"
+      },
+      {
+        "command": "cacheWarden.sendPingNow",
+        "title": "CacheWarden: Send Keepalive Now"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "build:webview": "node esbuild.config.mjs --webview",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "typescript": "^5.3.0"
+  }
+}

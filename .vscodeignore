@@ -1,0 +1,20 @@
+# Source & build inputs (only dist/ ships)
+src/**
+webview-ui/**
+esbuild.config.mjs
+tsconfig*.json
+
+# Dev / project scaffolding
+.coordination/**
+.vscode/**
+docs/**
+CLAUDE.md
+**/*.map
+
+# Tooling noise
+.gitignore
+.vscodeignore
+node_modules/**
+**/.DS_Store
+**/Thumbs.db
+*.vsix

@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "npm: build",
+      "type": "shell",
+      "command": "npm run build",
+      "group": "build",
+      "problemMatcher": ["$esbuild-watch"],
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "npm: watch",
+      "type": "shell",
+      "command": "npm run watch",
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": ["$esbuild-watch"],
+      "presentation": { "reveal": "silent" }
+    }
+  ]
+}
