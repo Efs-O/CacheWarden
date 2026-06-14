@@ -34,4 +34,5 @@ export type WebviewMessage =
   | { type: 'stateUpdate'; sessions: SessionState[] }
   | { type: 'toggle'; sessionId: string }
   | { type: 'reset'; sessionId: string }
-  | { type: 'pingNow'; sessionId: string };
+  | { type: 'pingNow'; sessionId: string }
+  | { type: 'dismiss'; sessionId: string };

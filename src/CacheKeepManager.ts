@@ -77,6 +77,22 @@ export class CacheKeepManager implements vscode.Disposable {
     this._onStateChange.fire(this.getStates());
   }
 
+  /**
+   * Remove a session card (moves its state to trash). Offers an Undo; a still-live
+   * chat also reappears on its next turn even without undoing.
+   */
+  dismiss(id: string) {
+    const token = this.hookInstaller.removeSession(id);
+    this._onStateChange.fire(this.getStates());
+    if (!token) { return; }
+    void vscode.window.showInformationMessage('CacheWarden: session card removed.', 'Undo').then(choice => {
+      if (choice === 'Undo') {
+        this.hookInstaller.restoreSession(id, token);
+        this._onStateChange.fire(this.getStates());
+      }
+    });
+  }
+
   async forcePing() {
     void vscode.window.showInformationMessage(
       'CacheWarden: pings fire automatically when a Claude reply finishes — there is no session to ping manually.'

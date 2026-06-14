@@ -35,6 +35,7 @@ export function App() {
   const postToggle = (id: string) => vscode.postMessage({ type: 'toggle', sessionId: id });
   const postReset = (id: string) => vscode.postMessage({ type: 'reset', sessionId: id });
   const postPingNow = (id: string) => vscode.postMessage({ type: 'pingNow', sessionId: id });
+  const postDismiss = (id: string) => vscode.postMessage({ type: 'dismiss', sessionId: id });
 
   if (sessions.length === 0) {
     return (
@@ -54,6 +55,7 @@ export function App() {
           onToggle={() => postToggle(s.id)}
           onReset={() => postReset(s.id)}
           onPingNow={() => postPingNow(s.id)}
+          onDismiss={() => postDismiss(s.id)}
         />
       ))}
     </div>

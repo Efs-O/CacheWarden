@@ -2,6 +2,16 @@
 
 All notable changes to CacheWarden are documented here.
 
+## [0.3.1]
+
+### Added
+- Dismiss button (✕) on each session card to remove sessions you don't want
+  cluttering the panel (e.g. closed chat tabs). Removing a session also stops its
+  keepalive; a still-live chat reappears on its next turn.
+- Undo for dismiss: removing a card shows an "Undo" notification and trashes the
+  session state for an hour rather than deleting it outright, so an accidental ✕
+  is recoverable.
+
 ## [0.3.0]
 
 ### Added

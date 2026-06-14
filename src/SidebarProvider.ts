@@ -9,7 +9,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private readonly extensionUri: vscode.Uri,
     private readonly onToggle: (id: string) => void,
     private readonly onReset: (id: string) => void,
-    private readonly onPingNow: (id: string) => void
+    private readonly onPingNow: (id: string) => void,
+    private readonly onDismiss: (id: string) => void
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView) {
@@ -24,6 +25,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       if (msg.type === 'toggle') this.onToggle(msg.sessionId);
       if (msg.type === 'reset') this.onReset(msg.sessionId);
       if (msg.type === 'pingNow') this.onPingNow(msg.sessionId);
+      if (msg.type === 'dismiss') this.onDismiss(msg.sessionId);
     });
 
     // Push current state on first load

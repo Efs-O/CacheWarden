@@ -29,7 +29,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.extensionUri,
     (id) => { manager.toggle(id); },
     () => { manager.resetStreak(); },
-    () => { void manager.forcePing(); }
+    () => { void manager.forcePing(); },
+    (id) => { manager.dismiss(id); }
   );
 
   if (!config.showStatusBar) {

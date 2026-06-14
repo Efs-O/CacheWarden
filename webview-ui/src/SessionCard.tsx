@@ -16,6 +16,7 @@ interface Props {
   onToggle: () => void;
   onReset: () => void;
   onPingNow: () => void;
+  onDismiss: () => void;
 }
 
 function formatSeconds(s: number): string {
@@ -24,7 +25,7 @@ function formatSeconds(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-export function SessionCard({ session, onToggle, onReset, onPingNow }: Props) {
+export function SessionCard({ session, onToggle, onReset, onPingNow, onDismiss }: Props) {
   const { label, armed, keepAliveStreak, keepAliveMaxPings, secondsRemaining, ttlSeconds, pingsSentTotal } = session;
   const progress = ttlSeconds > 0 ? secondsRemaining / ttlSeconds : 0;
   const timeStr = secondsRemaining === 0 ? 'expired' : formatSeconds(secondsRemaining);
@@ -46,7 +47,17 @@ export function SessionCard({ session, onToggle, onReset, onPingNow }: Props) {
           {label}
           {!armed && <span style={styles.pausedBadge}>paused</span>}
         </span>
-        <span style={{ ...styles.time, color: barColor }}>{timeStr}</span>
+        <span style={styles.headerRight}>
+          <span style={{ ...styles.time, color: barColor }}>{timeStr}</span>
+          <button
+            style={styles.dismissBtn}
+            onClick={onDismiss}
+            title="Remove this session card (Undo available)"
+            aria-label="Remove session"
+          >
+            ✕
+          </button>
+        </span>
       </div>
 
       <div style={styles.barTrack}>
@@ -91,7 +102,19 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     marginBottom: 6,
   },
-  label: { fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 },
+  label: { fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  headerRight: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
+  dismissBtn: {
+    fontSize: 12,
+    lineHeight: 1,
+    padding: '2px 5px',
+    cursor: 'pointer',
+    background: 'transparent',
+    color: 'var(--vscode-descriptionForeground)',
+    border: 'none',
+    borderRadius: 3,
+    opacity: 0.6,
+  },
   pausedBadge: {
     fontSize: 9,
     fontWeight: 600,

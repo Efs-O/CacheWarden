@@ -10,6 +10,7 @@ export class HookInstaller {
   readonly scriptPath = path.join(this.claudeDir, `${HOOK_ID}.js`);
   readonly stateDir = path.join(this.claudeDir, 'cache-warden');
   readonly sessionsDir = path.join(this.stateDir, 'sessions');
+  readonly trashDir = path.join(this.stateDir, 'trash');
 
   install(intervalSeconds: number, maxLoops: number, claudePath = ''): void {
     fs.mkdirSync(this.claudeDir, { recursive: true });
@@ -57,6 +58,47 @@ export class HookInstaller {
 
   isSessionPaused(sid: string): boolean {
     try { return fs.existsSync(this.sessionFile(sid, 'paused')); } catch { return false; }
+  }
+
+  /**
+   * Forget a session: move its state dir into `trash/` (so the card disappears and
+   * any in-flight chain dies once its `gen` token no longer resolves). Returns a
+   * trash token for restoreSession(), or null if there was nothing to remove.
+   * A session that is still a live chat reappears on its next turn regardless.
+   * Trash sits beside sessions/ so getStates() and the hook's pruner never scan it.
+   */
+  removeSession(sid: string): string | null {
+    const safe = String(sid).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const src = path.join(this.sessionsDir, safe);
+    try {
+      if (!fs.existsSync(src)) { return null; }
+      fs.mkdirSync(this.trashDir, { recursive: true });
+      this.purgeTrash();
+      const token = `${safe}__${Date.now()}`;
+      fs.renameSync(src, path.join(this.trashDir, token));
+      return token;
+    } catch { return null; }
+  }
+
+  /** Undo a removeSession(): move the trashed dir back to its session slot. */
+  restoreSession(sid: string, token: string): void {
+    const safe = String(sid).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const src = path.join(this.trashDir, token);
+    const dst = path.join(this.sessionsDir, safe);
+    try { if (fs.existsSync(src)) { fs.renameSync(src, dst); } } catch {}
+  }
+
+  /** Drop trashed sessions older than the undo window so trash can't accumulate. */
+  private purgeTrash(): void {
+    const cutoff = Date.now() - 60 * 60 * 1000;
+    try {
+      for (const d of fs.readdirSync(this.trashDir)) {
+        const ts = Number(d.split('__').pop());
+        if (!Number.isFinite(ts) || ts < cutoff) {
+          try { fs.rmSync(path.join(this.trashDir, d), { recursive: true, force: true }); } catch {}
+        }
+      }
+    } catch {}
   }
 
   private upsertHooks(): void {

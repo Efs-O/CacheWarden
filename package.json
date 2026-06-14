@@ -2,7 +2,7 @@
   "name": "cache-warden",
   "displayName": "CacheWarden",
   "description": "Keep your Anthropic prompt cache warm - auto-ping before the 5-minute TTL expires",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "Efsoo",
   "author": "Efs-O",
   "license": "Apache-2.0",
