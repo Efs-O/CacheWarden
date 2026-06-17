@@ -10,6 +10,8 @@ otherwise pay on your next real message after an idle gap.
 It works **per session**: open three Claude Code windows and each gets its own
 independent countdown, ping streak, and on/off switch.
 
+![CacheWarden sidebar — a live session card with countdown, keep-alive toggle, and ping controls](https://raw.githubusercontent.com/Efs-O/CacheWarden/main/images/screenshot-sidebar.png)
+
 ## Why
 
 Anthropic's prompt caching keeps your conversation context "hot" for 5 minutes

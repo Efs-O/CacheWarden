@@ -2,6 +2,11 @@
 
 All notable changes to CacheWarden are documented here.
 
+## [0.3.2]
+
+### Added
+- README screenshot of the sidebar panel showing a live session card.
+
 ## [0.3.1]
 
 ### Added
