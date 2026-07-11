@@ -102,7 +102,7 @@
         "cacheWarden.codexExperimentalKeepAlive": {
           "type": "boolean",
           "default": false,
-          "description": "Experimental: allow Codex keep-alive turns after validation. Currently tracking-only and this setting has no effect."
+          "description": "Experimental: enable manual guarded Codex validation pings. Automatic keep-alive remains disabled until cache and safety tests pass."
         }
       }
     },
@@ -143,7 +143,7 @@
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "build:webview": "node esbuild.config.mjs --webview",
-    "test:codex": "esbuild src/CodexJsonlParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexJsonlParser.cjs && esbuild src/CodexSessionTracker.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexSessionTracker.cjs && node --test tests/CodexJsonlParser.test.cjs tests/CodexSessionTracker.test.cjs",
+    "test:codex": "esbuild src/CodexJsonlParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexJsonlParser.cjs && esbuild src/CodexSessionTracker.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexSessionTracker.cjs && esbuild src/CodexKeepAliveRunner.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexKeepAliveRunner.cjs && node --test tests/CodexJsonlParser.test.cjs tests/CodexSessionTracker.test.cjs tests/CodexKeepAliveRunner.test.cjs",
     "gen:icon": "node scripts/gen-icon.js",
     "package": "vsce package"
   },

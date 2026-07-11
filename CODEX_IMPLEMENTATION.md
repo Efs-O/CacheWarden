@@ -92,8 +92,9 @@ Only when both the Codex target and experimental keep-alive flag are enabled:
 codex exec resume <session-id> <inert-prompt>
   --json
   --skip-git-repo-check
-  --sandbox read-only
-  --ask-for-approval never
+  --ignore-user-config
+  --ignore-rules
+  -c sandbox="read-only"
 ```
 
 - Use an inert prompt that explicitly forbids tools, file edits, external actions,

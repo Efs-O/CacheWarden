@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { HookInstaller } from './HookInstaller';
 import { CodexSessionTracker } from './CodexSessionTracker';
+import { CodexKeepAliveRunner } from './CodexKeepAliveRunner';
 import { CacheWardenConfig, SessionState } from './types';
 
 /**
@@ -19,6 +20,7 @@ export class CacheKeepManager implements vscode.Disposable {
   private readonly timer: ReturnType<typeof setInterval>;
   private readonly sessionNames = new Map<string, { name: string; checkedAt: number }>();
   private readonly codexTracker = new CodexSessionTracker();
+  private readonly codexRunner = new CodexKeepAliveRunner();
 
   readonly onStateChange: vscode.Event<SessionState[]>;
   private readonly _onStateChange = new vscode.EventEmitter<SessionState[]>();
@@ -112,9 +114,31 @@ export class CacheKeepManager implements vscode.Disposable {
 
   async forcePing(id?: string) {
     if (id?.startsWith('codex:')) {
-      void vscode.window.showInformationMessage(
-        'CacheWarden: Codex keep-alive is disabled until the cache-safety experiment passes.'
-      );
+      if (!this.config.codexExperimentalKeepAlive) {
+        void vscode.window.showInformationMessage(
+          'CacheWarden: enable the experimental Codex keep-alive setting to run a manual validation ping.'
+        );
+        return;
+      }
+      const snapshot = this.codexTracker.getSnapshot(id);
+      if (!snapshot) {
+        void vscode.window.showWarningMessage('CacheWarden: the Codex session is no longer available.');
+        return;
+      }
+      if (snapshot.taskActive) {
+        void vscode.window.showWarningMessage('CacheWarden: Codex is active; the validation ping was cancelled.');
+        return;
+      }
+      if (Date.now() - snapshot.lastEventMs < 2000) {
+        void vscode.window.showWarningMessage('CacheWarden: Codex activity is too recent; try again in a few seconds.');
+        return;
+      }
+      const result = await this.codexRunner.run(snapshot.sessionId, snapshot.cwd, this.config.codexPath);
+      if (result.ok) {
+        void vscode.window.showInformationMessage('CacheWarden: Codex validation ping completed safely in the same session.');
+      } else {
+        void vscode.window.showErrorMessage(`CacheWarden: Codex validation ping failed: ${result.error}`);
+      }
       return;
     }
     void vscode.window.showInformationMessage(
@@ -200,7 +224,9 @@ export class CacheKeepManager implements vscode.Disposable {
 
     if (this.config.targets.includes('codex')) {
       const folders = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) || [];
-      sessions.push(...this.codexTracker.getStates(folders, this.config.ttlSeconds));
+      sessions.push(...this.codexTracker.getStates(
+        folders, this.config.ttlSeconds, this.config.codexExperimentalKeepAlive
+      ));
     }
 
     // Counting sessions first (most urgent on top — also drives the status bar), then active chats.

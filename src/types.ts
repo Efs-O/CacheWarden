@@ -12,6 +12,7 @@ export interface SessionState {
   chatActive?: boolean;
   /** Session is observable, but automated keep-alive is deliberately unavailable. */
   trackingOnly?: boolean;
+  experimentalPingEnabled?: boolean;
   inputTokens?: number;
   cachedInputTokens?: number;
 }

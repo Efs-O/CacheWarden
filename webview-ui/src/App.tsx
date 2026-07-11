@@ -18,6 +18,7 @@ interface SessionState {
   ttlSeconds: number;
   pingsSentTotal: number;
   trackingOnly?: boolean;
+  experimentalPingEnabled?: boolean;
   inputTokens?: number;
   cachedInputTokens?: number;
 }

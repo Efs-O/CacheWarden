@@ -17,7 +17,7 @@ export class CodexSessionTracker {
 
   constructor(private readonly sessionsRoot = path.join(os.homedir(), '.codex', 'sessions')) {}
 
-  getStates(workspaceFolders: string[], ttlSeconds: number): SessionState[] {
+  getStates(workspaceFolders: string[], ttlSeconds: number, experimentalPingEnabled = false): SessionState[] {
     this.refresh();
     const now = Date.now();
     const byId = new Map<string, CodexSessionSnapshot>();
@@ -36,6 +36,7 @@ export class CodexSessionTracker {
       label: snapshot.title || `Codex · ${snapshot.sessionId.slice(0, 8)}`,
       armed: false,
       trackingOnly: true,
+      experimentalPingEnabled,
       keepAliveStreak: 0,
       keepAliveMaxPings: 0,
       secondsRemaining: ttlSeconds,
@@ -49,6 +50,14 @@ export class CodexSessionTracker {
 
   dismiss(id: string): void {
     this.dismissed.add(id.replace(/^codex:/, ''));
+  }
+
+  getSnapshot(id: string): CodexSessionSnapshot | undefined {
+    this.refresh();
+    const rawId = id.replace(/^codex:/, '');
+    return [...this.files.values()].map(file => file.snapshot)
+      .filter(snapshot => snapshot.sessionId === rawId)
+      .sort((a, b) => b.lastEventMs - a.lastEventMs)[0];
   }
 
   private refresh(): void {
