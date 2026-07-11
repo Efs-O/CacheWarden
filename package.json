@@ -61,7 +61,8 @@
           "items": {
             "type": "string",
             "enum": [
-              "claude"
+              "claude",
+              "codex"
             ]
           },
           "default": [
@@ -92,6 +93,16 @@
           "type": "string",
           "default": "",
           "description": "Absolute path to the Claude Code executable (the package's native binary, e.g. .../@anthropic-ai/claude-code/bin/claude.exe). Leave empty to auto-detect."
+        },
+        "cacheWarden.codexPath": {
+          "type": "string",
+          "default": "",
+          "description": "Experimental: absolute path to the Codex executable. Leave empty to use PATH."
+        },
+        "cacheWarden.codexExperimentalKeepAlive": {
+          "type": "boolean",
+          "default": false,
+          "description": "Experimental: allow Codex keep-alive turns after validation. Currently tracking-only and this setting has no effect."
         }
       }
     },
@@ -132,6 +143,7 @@
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "build:webview": "node esbuild.config.mjs --webview",
+    "test:codex": "esbuild src/CodexJsonlParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexJsonlParser.cjs && esbuild src/CodexSessionTracker.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexSessionTracker.cjs && node --test tests/CodexJsonlParser.test.cjs tests/CodexSessionTracker.test.cjs",
     "gen:icon": "node scripts/gen-icon.js",
     "package": "vsce package"
   },

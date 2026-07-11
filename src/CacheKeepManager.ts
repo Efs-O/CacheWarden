@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { HookInstaller } from './HookInstaller';
+import { CodexSessionTracker } from './CodexSessionTracker';
 import { CacheWardenConfig, SessionState } from './types';
 
 /**
@@ -17,6 +18,7 @@ export class CacheKeepManager implements vscode.Disposable {
   private armed = false;
   private readonly timer: ReturnType<typeof setInterval>;
   private readonly sessionNames = new Map<string, { name: string; checkedAt: number }>();
+  private readonly codexTracker = new CodexSessionTracker();
 
   readonly onStateChange: vscode.Event<SessionState[]>;
   private readonly _onStateChange = new vscode.EventEmitter<SessionState[]>();
@@ -28,7 +30,7 @@ export class CacheKeepManager implements vscode.Disposable {
     this.onStateChange = this._onStateChange.event;
 
     // Always reinstall when enabled so the deployed script matches this extension version.
-    if (config.hookEnabled) {
+    if (config.hookEnabled && config.targets.includes('claude')) {
       this.arm();
     } else if (hookInstaller.isInstalled()) {
       this.disarm();
@@ -47,12 +49,20 @@ export class CacheKeepManager implements vscode.Disposable {
    */
   toggle(id?: string) {
     if (id) {
+      if (id.startsWith('codex:')) {
+        void vscode.window.showInformationMessage('CacheWarden: Codex keep-alive is tracking-only during the experiment.');
+        return;
+      }
       if (this.hookInstaller.isSessionPaused(id)) {
         this.hookInstaller.resumeSession(id);
       } else {
         this.hookInstaller.pauseSession(id);
       }
       this._onStateChange.fire(this.getStates());
+      return;
+    }
+    if (!this.config.targets.includes('claude')) {
+      void vscode.window.showInformationMessage('CacheWarden: Codex is tracking-only during the experiment.');
       return;
     }
     if (this.armed) {
@@ -84,6 +94,11 @@ export class CacheKeepManager implements vscode.Disposable {
    * chat also reappears on its next turn even without undoing.
    */
   dismiss(id: string) {
+    if (id.startsWith('codex:')) {
+      this.codexTracker.dismiss(id);
+      this._onStateChange.fire(this.getStates());
+      return;
+    }
     const token = this.hookInstaller.removeSession(id);
     this._onStateChange.fire(this.getStates());
     if (!token) { return; }
@@ -95,15 +110,26 @@ export class CacheKeepManager implements vscode.Disposable {
     });
   }
 
-  async forcePing() {
+  async forcePing(id?: string) {
+    if (id?.startsWith('codex:')) {
+      void vscode.window.showInformationMessage(
+        'CacheWarden: Codex keep-alive is disabled until the cache-safety experiment passes.'
+      );
+      return;
+    }
     void vscode.window.showInformationMessage(
       'CacheWarden: pings fire automatically when a Claude reply finishes — there is no session to ping manually.'
     );
   }
 
   updateConfig(config: CacheWardenConfig) {
+    const shouldArmClaude = config.hookEnabled && config.targets.includes('claude');
     this.config = config;
-    if (this.armed) {
+    if (shouldArmClaude && !this.armed) {
+      this.arm();
+    } else if (!shouldArmClaude && this.armed) {
+      this.disarm();
+    } else if (this.armed) {
       this.hookInstaller.install(config.ttlSeconds, config.keepAliveMaxPings, config.claudePath);
     }
   }
@@ -172,8 +198,14 @@ export class CacheKeepManager implements vscode.Disposable {
       });
     }
 
+    if (this.config.targets.includes('codex')) {
+      const folders = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) || [];
+      sessions.push(...this.codexTracker.getStates(folders, this.config.ttlSeconds));
+    }
+
     // Counting sessions first (most urgent on top — also drives the status bar), then active chats.
     sessions.sort((a, b) =>
+      Number(a.trackingOnly ?? false) - Number(b.trackingOnly ?? false) ||
       Number(a.chatActive ?? false) - Number(b.chatActive ?? false) ||
       a.secondsRemaining - b.secondsRemaining
     );

@@ -22,6 +22,13 @@ export class CacheWardenStatusBar implements vscode.Disposable {
   }
 
   update(state: SessionState | undefined, armed: boolean) {
+    if (state?.trackingOnly) {
+      this.item.text = state.chatActive ? '$(comment-discussion) Codex: active' : '$(eye) Codex: tracking';
+      this.item.color = undefined;
+      this.item.tooltip = `CacheWarden is tracking Codex session activity.\nSession: ${state.label}\nAutomated keep-alive is disabled during validation.`;
+      return;
+    }
+
     if (!armed) {
       this.item.text = '$(clock) Cache: paused';
       this.item.color = undefined;

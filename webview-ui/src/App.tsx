@@ -9,6 +9,7 @@ const vscode = acquireVsCodeApi();
 
 interface SessionState {
   id: string;
+  provider?: 'claude' | 'codex';
   label: string;
   armed: boolean;
   keepAliveStreak: number;
@@ -16,6 +17,9 @@ interface SessionState {
   secondsRemaining: number;
   ttlSeconds: number;
   pingsSentTotal: number;
+  trackingOnly?: boolean;
+  inputTokens?: number;
+  cachedInputTokens?: number;
 }
 
 export function App() {

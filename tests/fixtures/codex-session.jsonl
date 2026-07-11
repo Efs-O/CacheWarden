@@ -1,0 +1,6 @@
+{"timestamp":"2026-07-11T08:00:00.000Z","type":"session_meta","payload":{"id":"11111111-2222-4333-8444-555555555555","cwd":"N:\\work\\demo","source":"vscode"}}
+{"timestamp":"2026-07-11T08:00:01.000Z","type":"event_msg","payload":{"type":"user_message","message":"Implement the parser tests\nwithout changing Claude"}}
+not valid json
+{"timestamp":"2026-07-11T08:00:02.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+{"timestamp":"2026-07-11T08:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1200,"cached_input_tokens":900}}}}
+{"timestamp":"2026-07-11T08:00:04.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","completed_at":"2026-07-11T08:00:04.000Z"}}

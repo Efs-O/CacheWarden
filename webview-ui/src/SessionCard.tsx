@@ -2,6 +2,7 @@ import React from 'react';
 
 interface SessionState {
   id: string;
+  provider?: 'claude' | 'codex';
   label: string;
   armed: boolean;
   keepAliveStreak: number;
@@ -9,6 +10,9 @@ interface SessionState {
   secondsRemaining: number;
   ttlSeconds: number;
   pingsSentTotal: number;
+  trackingOnly?: boolean;
+  inputTokens?: number;
+  cachedInputTokens?: number;
 }
 
 interface Props {
@@ -26,7 +30,7 @@ function formatSeconds(s: number): string {
 }
 
 export function SessionCard({ session, onToggle, onReset, onPingNow, onDismiss }: Props) {
-  const { label, armed, keepAliveStreak, keepAliveMaxPings, secondsRemaining, ttlSeconds, pingsSentTotal } = session;
+  const { label, provider = 'claude', armed, trackingOnly, keepAliveStreak, keepAliveMaxPings, secondsRemaining, ttlSeconds, pingsSentTotal } = session;
   const progress = ttlSeconds > 0 ? secondsRemaining / ttlSeconds : 0;
   const timeStr = secondsRemaining === 0 ? 'expired' : formatSeconds(secondsRemaining);
   const isExpired = secondsRemaining === 0;
@@ -45,14 +49,17 @@ export function SessionCard({ session, onToggle, onReset, onPingNow, onDismiss }
       <div style={styles.header}>
         <span style={styles.label}>
           {label}
-          {!armed && <span style={styles.pausedBadge}>paused</span>}
+          <span style={provider === 'codex' ? styles.codexBadge : styles.claudeBadge}>{provider}</span>
+          {trackingOnly
+            ? <span style={styles.trackingBadge}>tracking only</span>
+            : !armed && <span style={styles.pausedBadge}>paused</span>}
         </span>
         <span style={styles.headerRight}>
-          <span style={{ ...styles.time, color: barColor }}>{timeStr}</span>
+          {!trackingOnly && <span style={{ ...styles.time, color: barColor }}>{timeStr}</span>}
           <button
             style={styles.dismissBtn}
             onClick={onDismiss}
-            title="Remove this session card (Undo available)"
+            title={trackingOnly ? 'Hide this tracked session until VS Code reloads' : 'Remove this session card (Undo available)'}
             aria-label="Remove session"
           >
             ✕
@@ -60,7 +67,7 @@ export function SessionCard({ session, onToggle, onReset, onPingNow, onDismiss }
         </span>
       </div>
 
-      <div style={styles.barTrack}>
+      {!trackingOnly && <div style={styles.barTrack}>
         <div
           style={{
             ...styles.barFill,
@@ -68,21 +75,27 @@ export function SessionCard({ session, onToggle, onReset, onPingNow, onDismiss }
             background: barColor,
           }}
         />
-      </div>
+      </div>}
 
       <div style={styles.row}>
-        <button
+        {trackingOnly ? (
+          <button style={{ ...styles.btn, ...styles.btnOff }} disabled title="Codex keep-alive is not enabled during validation">
+            Keep-alive disabled
+          </button>
+        ) : <button
           style={{ ...styles.btn, ...(armed ? styles.btnOn : styles.btnOff) }}
           onClick={onToggle}
         >
           {armed ? 'Cache Keep ON' : 'Cache Keep OFF'}
-        </button>
-        <button style={styles.btn} onClick={onReset}>Reset</button>
-        <button style={styles.btn} onClick={onPingNow}>Ping Now</button>
+        </button>}
+        {!trackingOnly && <button style={styles.btn} onClick={onReset}>Reset</button>}
+        {!trackingOnly && <button style={styles.btn} onClick={onPingNow}>Ping Now</button>}
       </div>
 
       <div style={styles.meta}>
-        {keepAliveStreak}/{keepAliveMaxPings} consecutive pings &nbsp;·&nbsp; {pingsSentTotal} total
+        {trackingOnly
+          ? `Last turn: ${session.cachedInputTokens ?? 0}/${session.inputTokens ?? 0} cached input tokens`
+          : `${keepAliveStreak}/${keepAliveMaxPings} consecutive pings · ${pingsSentTotal} total`}
       </div>
     </div>
   );
@@ -124,6 +137,16 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     color: '#fff',
     background: '#da3633',
+  },
+  trackingBadge: {
+    fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
+    padding: '1px 5px', borderRadius: 8, color: '#fff', background: '#6e7681',
+  },
+  claudeBadge: {
+    fontSize: 9, fontWeight: 600, textTransform: 'uppercase', opacity: 0.65,
+  },
+  codexBadge: {
+    fontSize: 9, fontWeight: 600, textTransform: 'uppercase', color: '#58a6ff',
   },
   time: { fontSize: 13, fontVariantNumeric: 'tabular-nums' },
   barTrack: {

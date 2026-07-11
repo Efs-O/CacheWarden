@@ -1,5 +1,6 @@
 export interface SessionState {
   id: string;
+  provider?: 'claude' | 'codex';
   label: string;
   armed: boolean;
   keepAliveStreak: number;
@@ -9,6 +10,10 @@ export interface SessionState {
   pingsSentTotal: number;
   /** A chat turn is in progress (user typed / reply being generated) — countdown not started yet. */
   chatActive?: boolean;
+  /** Session is observable, but automated keep-alive is deliberately unavailable. */
+  trackingOnly?: boolean;
+  inputTokens?: number;
+  cachedInputTokens?: number;
 }
 
 export interface CacheWardenConfig {
@@ -20,6 +25,8 @@ export interface CacheWardenConfig {
   pingMethod: 'clipboard' | 'notify';
   showStatusBar: boolean;
   claudePath: string;
+  codexPath: string;
+  codexExperimentalKeepAlive: boolean;
 }
 
 export const KEEPALIVE_MESSAGE = `[AW_TURN_TYPE: keep-alive]

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 out/
+.test-dist/
 *.vsix
 .coordination/
 .vscode/settings.json

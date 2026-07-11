@@ -16,6 +16,8 @@ function getConfig(): CacheWardenConfig {
     pingMethod: cfg.get<'clipboard' | 'notify'>('pingMethod', 'clipboard'),
     showStatusBar: cfg.get<boolean>('showStatusBar', true),
     claudePath: cfg.get<string>('claudePath', ''),
+    codexPath: cfg.get<string>('codexPath', ''),
+    codexExperimentalKeepAlive: cfg.get<boolean>('codexExperimentalKeepAlive', false),
   };
 }
 
@@ -29,7 +31,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.extensionUri,
     (id) => { manager.toggle(id); },
     () => { manager.resetStreak(); },
-    () => { void manager.forcePing(); },
+    (id) => { void manager.forcePing(id); },
     (id) => { manager.dismiss(id); }
   );
 
