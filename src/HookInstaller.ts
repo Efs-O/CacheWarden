@@ -190,7 +190,7 @@ function logErr(e) { try { fs.mkdirSync(stateDir, { recursive: true }); fs.write
 function sdirFor(sid) { return path.join(sessionsDir, String(sid).replace(/[^a-zA-Z0-9._-]/g, '_')); }
 function readGen(sdir) { try { return fs.readFileSync(path.join(sdir, 'gen'), 'utf8'); } catch { return ''; } }
 function writeGen(sdir, t) { try { fs.mkdirSync(sdir, { recursive: true }); fs.writeFileSync(path.join(sdir, 'gen'), t); } catch {} }
-function writeMeta(sdir, cwd) { try { fs.mkdirSync(sdir, { recursive: true }); fs.writeFileSync(path.join(sdir, 'meta'), JSON.stringify({ cwd: cwd || '', t: Date.now() })); } catch {} }
+function writeMeta(sdir, cwd, transcriptPath) { try { fs.mkdirSync(sdir, { recursive: true }); fs.writeFileSync(path.join(sdir, 'meta'), JSON.stringify({ cwd: cwd || '', transcriptPath: transcriptPath || '', t: Date.now() })); } catch {} }
 function pruneSessions() {
   try {
     const cutoff = Date.now() - 24 * 3600 * 1000;
@@ -279,7 +279,7 @@ if (process.argv[2] === '--bg') {
     try {
       const input = JSON.parse(stdinData);
       const sdir = sdirFor(input.session_id);
-      writeMeta(sdir, input.cwd);
+      writeMeta(sdir, input.cwd, input.transcript_path);
       if (isReset) {
         // User prompt in this session: kill only this session's chain (chat refreshes its own cache).
         writeGen(sdir, 'reset-' + Date.now());

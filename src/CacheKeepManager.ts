@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { HookInstaller } from './HookInstaller';
 import { CacheWardenConfig, SessionState } from './types';
 
@@ -15,6 +16,7 @@ import { CacheWardenConfig, SessionState } from './types';
 export class CacheKeepManager implements vscode.Disposable {
   private armed = false;
   private readonly timer: ReturnType<typeof setInterval>;
+  private readonly sessionNames = new Map<string, { name: string; checkedAt: number }>();
 
   readonly onStateChange: vscode.Event<SessionState[]>;
   private readonly _onStateChange = new vscode.EventEmitter<SessionState[]>();
@@ -132,8 +134,11 @@ export class CacheKeepManager implements vscode.Disposable {
       } catch { /* no ping yet in this idle period */ }
 
       let cwd = '';
+      let transcriptPath = '';
       try {
-        cwd = JSON.parse(fs.readFileSync(path.join(sdir, 'meta'), 'utf8')).cwd || '';
+        const meta = JSON.parse(fs.readFileSync(path.join(sdir, 'meta'), 'utf8'));
+        cwd = meta.cwd || '';
+        transcriptPath = meta.transcriptPath || '';
       } catch { /* meta written by >= v0.2 hook only */ }
 
       if (cwd && !this.matchesWorkspace(cwd)) { continue; }
@@ -153,9 +158,10 @@ export class CacheKeepManager implements vscode.Disposable {
         ? Math.max(0, Math.round(this.config.ttlSeconds - ageMs / 1000))
         : this.config.ttlSeconds;
 
+      const sessionName = this.getSessionName(sid, transcriptPath);
       sessions.push({
         id: sid,
-        label: cwd ? `${path.basename(cwd)} · ${sid.slice(0, 8)}` : sid.slice(0, 8),
+        label: sessionName || (cwd ? `${path.basename(cwd)} · ${sid.slice(0, 8)}` : sid.slice(0, 8)),
         armed: sessionArmed,
         keepAliveStreak: streak,
         keepAliveMaxPings: this.config.keepAliveMaxPings,
@@ -172,6 +178,85 @@ export class CacheKeepManager implements vscode.Disposable {
       a.secondsRemaining - b.secondsRemaining
     );
     return sessions;
+  }
+
+  /** Prefer the conversation title/prompt; Claude's live-process name is only a fallback. */
+  private getSessionName(sid: string, transcriptPath: string): string {
+    const cached = this.sessionNames.get(sid);
+    if (cached && Date.now() - cached.checkedAt < 30_000) { return cached.name; }
+
+    let name = '';
+    if (transcriptPath) {
+      try {
+        const index = JSON.parse(fs.readFileSync(path.join(path.dirname(transcriptPath), 'sessions-index.json'), 'utf8'));
+        const entry = Array.isArray(index.entries)
+          ? index.entries.find((candidate: { sessionId?: string }) => candidate.sessionId === sid)
+          : undefined;
+        name ||= this.cleanSessionName(entry?.summary || entry?.firstPrompt || '');
+      } catch { /* Claude does not create an index for every project */ }
+    }
+
+    if (!name) {
+      try {
+        const historyPath = path.join(os.homedir(), '.claude', 'history.jsonl');
+        const lines = fs.readFileSync(historyPath, 'utf8').split(/\r?\n/);
+        for (const line of lines) {
+          if (!line) { continue; }
+          try {
+            const entry = JSON.parse(line);
+            if (entry.sessionId === sid && !String(entry.display || '').startsWith('/')) {
+              name = this.cleanSessionName(entry.display || '');
+              if (name) { break; }
+            }
+          } catch { /* ignore a partially-written history line */ }
+        }
+      } catch { /* history is optional */ }
+    }
+
+    if (!name && transcriptPath) {
+      try {
+        for (const line of fs.readFileSync(transcriptPath, 'utf8').split(/\r?\n/)) {
+          if (!line) { continue; }
+          try {
+            const entry = JSON.parse(line);
+            if (entry.message?.role !== 'user') { continue; }
+            const content = entry.message.content;
+            const text = typeof content === 'string'
+              ? content
+              : Array.isArray(content)
+                ? content.find((block: { type?: string; text?: string }) => block.type === 'text')?.text || ''
+                : '';
+            name = this.cleanSessionName(text);
+            if (name) { break; }
+          } catch { /* ignore a partially-written transcript line */ }
+        }
+      } catch { /* transcript may have been pruned */ }
+    }
+
+    if (!name) {
+      try {
+        const liveSessionsDir = path.join(os.homedir(), '.claude', 'sessions');
+        for (const filename of fs.readdirSync(liveSessionsDir)) {
+          if (!filename.endsWith('.json')) { continue; }
+          try {
+            const liveSession = JSON.parse(fs.readFileSync(path.join(liveSessionsDir, filename), 'utf8'));
+            if (liveSession.sessionId === sid) {
+              name = this.cleanSessionName(liveSession.name || '');
+              if (name) { break; }
+            }
+          } catch { /* ignore stale or partially-written live-session records */ }
+        }
+      } catch { /* no live sessions directory */ }
+    }
+
+    this.sessionNames.set(sid, { name, checkedAt: Date.now() });
+    return name;
+  }
+
+  private cleanSessionName(value: string): string {
+    const oneLine = String(value).replace(/\s+/g, ' ').trim();
+    if (!oneLine) { return ''; }
+    return oneLine.length > 60 ? `${oneLine.slice(0, 57)}…` : oneLine;
   }
 
   private matchesWorkspace(cwd: string): boolean {

@@ -2,6 +2,12 @@
 
 All notable changes to CacheWarden are documented here.
 
+## [0.3.3]
+
+### Changed
+- Session cards now show Claude's conversation title instead of only the project
+  name and shortened session ID, with safe fallbacks for older sessions.
+
 ## [0.3.2]
 
 ### Added
