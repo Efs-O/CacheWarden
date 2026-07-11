@@ -15,6 +15,9 @@ images/social-preview.png
 .coordination/**
 .vscode/**
 docs/**
+tests/**
+.test-dist/**
+CODEX_IMPLEMENTATION.md
 CLAUDE.md
 **/*.map
 

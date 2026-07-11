@@ -190,3 +190,38 @@ a separate decision and do not ship automated Codex keep-alive.
 5. Execute the controlled cache experiment and record results in this document.
 6. Run soak/regression tests.
 7. Review evidence, then either merge, revise, or abandon the keep-alive feature.
+
+## Experiment log
+
+### 2026-07-11 — Phase A tracking
+
+- Codex CLI: `0.144.1`.
+- Added parser/provider fixtures covering malformed JSONL, lifecycle transitions,
+  workspace filtering, incremental append handling, dismissal, title extraction,
+  and cached-token metrics.
+- Live tracking found the active CacheWarden workspace session and reported its
+  ID, first-prompt title, active state, `input_tokens`, and
+  `cached_input_tokens`.
+- Result: PASS for the tracking-only milestone.
+
+### 2026-07-11 — guarded manual resume
+
+- Created two disposable Git repositories and dedicated Codex sessions.
+- The guarded runner resumed the experimental session repeatedly with the exact
+  original session ID, zero tool events, and successful completion.
+- A baseline invocation using normal user configuration created `.coordination/`
+  state through a configured MCP server. The CacheWarden runner was changed to
+  use `--ignore-user-config`, `--ignore-rules`, and
+  `-c sandbox="read-only"`. After deleting the disposable state and repeating,
+  the runner created no workspace files and `git status` remained clean.
+- Immediate token observations included `12032/12260` cached/input tokens after
+  a same-session inert turn, confirming that Codex reports usable cache metrics.
+- The timed control-versus-refresh comparison could not complete because the
+  account usage limit was reached before either final probe. Both probes failed
+  closed with no tools.
+- Result: PASS for same-session/no-tool/no-write safety in the disposable test;
+  BLOCKED for cache-benefit evidence until usage resets.
+
+Automatic Codex scheduling remains intentionally unimplemented. The branch must
+not merge until the timed comparison is repeated successfully at least three
+times and the remaining soak/regression gates pass.
