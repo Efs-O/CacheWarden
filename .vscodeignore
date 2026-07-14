@@ -18,6 +18,10 @@ docs/**
 CLAUDE.md
 **/*.map
 
+# Tests & their build output (never ship)
+tests/**
+.test-dist/**
+
 # Tooling noise
 .gitignore
 .vscodeignore
