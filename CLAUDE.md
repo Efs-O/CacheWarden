@@ -58,4 +58,4 @@ If the CLI requires a reply, emit only the inert marker [AW_KEEPALIVE_OK].
 ## MVP scope
 
 Phase 1: single shared session, IdleTracker + TimerStore + CacheKeepManager + StatusBarItem.  
-Codex support is not implemented yet.
+Codex support: read-only session tracking is on when `codex` is in `targets`; keep-alive pings are opt-in via `cacheWarden.codexKeepAlive` (off by default, consumes Codex usage).

@@ -15,12 +15,10 @@ images/social-preview.png
 .coordination/**
 .vscode/**
 docs/**
-CLAUDE.md
-**/*.map
-
-# Tests & their build output (never ship)
 tests/**
 .test-dist/**
+CLAUDE.md
+**/*.map
 
 # Tooling noise
 .gitignore

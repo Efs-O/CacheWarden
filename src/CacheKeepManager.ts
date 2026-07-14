@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { HookInstaller } from './HookInstaller';
+import { CodexSessionTracker } from './CodexSessionTracker';
+import { CodexKeepAliveRunner } from './CodexKeepAliveRunner';
 import { parseClaudeAiTitle } from './ClaudeTitleParser';
 import { CacheWardenConfig, SessionState } from './types';
 
@@ -18,6 +20,13 @@ export class CacheKeepManager implements vscode.Disposable {
   private armed = false;
   private readonly timer: ReturnType<typeof setInterval>;
   private readonly sessionNames = new Map<string, { name: string; checkedAt: number }>();
+  private readonly codexTracker = new CodexSessionTracker();
+  private readonly codexRunner = new CodexKeepAliveRunner();
+  private readonly codexAuto = new Map<string, {
+    paused: boolean; streak: number; total: number; anchorMs: number;
+    idleStartedMs: number; lastUserMessageMs: number; pinging: boolean;
+  }>();
+  private readonly claudeUsageCache = new Map<string, { checkedAt: number; inputTokens: number; cachedInputTokens: number }>();
 
   readonly onStateChange: vscode.Event<SessionState[]>;
   private readonly _onStateChange = new vscode.EventEmitter<SessionState[]>();
@@ -29,13 +38,17 @@ export class CacheKeepManager implements vscode.Disposable {
     this.onStateChange = this._onStateChange.event;
 
     // Always reinstall when enabled so the deployed script matches this extension version.
-    if (config.hookEnabled) {
+    if (config.hookEnabled && config.targets.includes('claude')) {
       this.arm();
     } else if (hookInstaller.isInstalled()) {
       this.disarm();
     }
 
-    this.timer = setInterval(() => this._onStateChange.fire(this.getStates()), 1000);
+    this.timer = setInterval(() => {
+      const states = this.getStates();
+      this._onStateChange.fire(states);
+      void this.tickCodex(states);
+    }, 1000);
   }
 
   get isArmed(): boolean {
@@ -48,12 +61,26 @@ export class CacheKeepManager implements vscode.Disposable {
    */
   toggle(id?: string) {
     if (id) {
+      if (id.startsWith('codex:')) {
+        if (!this.config.codexKeepAlive) {
+          void vscode.window.showInformationMessage('CacheWarden: enable the Codex keep-alive setting first (it consumes Codex usage).');
+          return;
+        }
+        const state = this.codexAuto.get(id);
+        if (state) { state.paused = !state.paused; }
+        this._onStateChange.fire(this.getStates());
+        return;
+      }
       if (this.hookInstaller.isSessionPaused(id)) {
         this.hookInstaller.resumeSession(id);
       } else {
         this.hookInstaller.pauseSession(id);
       }
       this._onStateChange.fire(this.getStates());
+      return;
+    }
+    if (!this.config.targets.includes('claude')) {
+      void vscode.window.showInformationMessage('CacheWarden: Codex is tracking-only unless you enable Codex keep-alive.');
       return;
     }
     if (this.armed) {
@@ -75,7 +102,18 @@ export class CacheKeepManager implements vscode.Disposable {
     this._onStateChange.fire(this.getStates());
   }
 
-  resetStreak() {
+  resetStreak(id?: string) {
+    if (id?.startsWith('codex:')) {
+      const state = this.codexAuto.get(id);
+      if (state) {
+        state.streak = 0;
+        state.total = 0;
+        state.anchorMs = Date.now();
+        state.idleStartedMs = state.anchorMs;
+      }
+      this._onStateChange.fire(this.getStates());
+      return;
+    }
     this.hookInstaller.resetCounter();
     this._onStateChange.fire(this.getStates());
   }
@@ -85,6 +123,11 @@ export class CacheKeepManager implements vscode.Disposable {
    * chat also reappears on its next turn even without undoing.
    */
   dismiss(id: string) {
+    if (id.startsWith('codex:')) {
+      this.codexTracker.dismiss(id);
+      this._onStateChange.fire(this.getStates());
+      return;
+    }
     const token = this.hookInstaller.removeSession(id);
     this._onStateChange.fire(this.getStates());
     if (!token) { return; }
@@ -96,15 +139,83 @@ export class CacheKeepManager implements vscode.Disposable {
     });
   }
 
-  async forcePing() {
+  async forcePing(id?: string) {
+    if (id?.startsWith('codex:')) {
+      if (!this.config.codexKeepAlive) {
+        void vscode.window.showInformationMessage(
+          'CacheWarden: enable the Codex keep-alive setting to run a manual ping (it consumes Codex usage).'
+        );
+        return;
+      }
+      const snapshot = this.codexTracker.getSnapshot(id);
+      if (!snapshot) {
+        void vscode.window.showWarningMessage('CacheWarden: the Codex session is no longer available.');
+        return;
+      }
+      if (snapshot.taskActive) {
+        void vscode.window.showWarningMessage('CacheWarden: Codex is active; the validation ping was cancelled.');
+        return;
+      }
+      if (Date.now() - snapshot.lastEventMs < 2000) {
+        void vscode.window.showWarningMessage('CacheWarden: Codex activity is too recent; try again in a few seconds.');
+        return;
+      }
+      const result = await this.runCodexPing(id, true);
+      if (!result) { return; }
+      if (result.ok) {
+        void vscode.window.showInformationMessage('CacheWarden: Codex validation ping completed safely in the same session.');
+      } else {
+        void vscode.window.showErrorMessage(`CacheWarden: Codex validation ping failed: ${result.error}`);
+      }
+      return;
+    }
     void vscode.window.showInformationMessage(
       'CacheWarden: pings fire automatically when a Claude reply finishes — there is no session to ping manually.'
     );
   }
 
+  private async runCodexPing(id: string, manual: boolean) {
+    const auto = this.codexAuto.get(id);
+    const snapshot = this.codexTracker.getSnapshot(id);
+    if (!snapshot || !auto || auto.pinging) { return undefined; }
+    if (snapshot.taskActive || Date.now() - snapshot.lastEventMs < 2000) {
+      if (manual) { void vscode.window.showWarningMessage('CacheWarden: Codex is active or activity is too recent.'); }
+      return undefined;
+    }
+    auto.pinging = true;
+    this._onStateChange.fire(this.getStates());
+    const result = await this.codexRunner.run(snapshot.sessionId, snapshot.cwd, this.config.codexPath);
+    auto.pinging = false;
+    if (result.ok) {
+      auto.streak += 1;
+      auto.total += 1;
+      auto.anchorMs = Date.now();
+    } else if (!manual) {
+      auto.paused = true;
+      void vscode.window.showErrorMessage(`CacheWarden: automatic Codex ping failed and was paused: ${result.error}`);
+    }
+    this._onStateChange.fire(this.getStates());
+    return result;
+  }
+
+  private async tickCodex(states: SessionState[]): Promise<void> {
+    for (const session of states) {
+      if (session.provider !== 'codex' || !session.armed || session.chatActive || session.secondsRemaining > 0) { continue; }
+      const auto = this.codexAuto.get(session.id);
+      if (!auto || auto.pinging || auto.streak >= this.config.keepAliveMaxPings) { continue; }
+      if (Date.now() - auto.idleStartedMs >= this.config.keepAliveDurationSeconds * 1000) { continue; }
+      await this.runCodexPing(session.id, false);
+    }
+  }
+
   updateConfig(config: CacheWardenConfig) {
+    const shouldArmClaude = config.hookEnabled && config.targets.includes('claude');
     this.config = config;
-    if (this.armed) {
+    if (shouldArmClaude && !this.armed) {
+      this.arm();
+    } else if (!shouldArmClaude && this.armed) {
+      this.disarm();
+    } else if (this.armed) {
       this.hookInstaller.install(config.ttlSeconds, config.keepAliveMaxPings, config.claudePath);
     }
   }
@@ -160,6 +271,7 @@ export class CacheKeepManager implements vscode.Disposable {
         : this.config.ttlSeconds;
 
       const sessionName = this.getSessionName(sid, transcriptPath);
+      const usage = this.getClaudeTokenUsage(sid, transcriptPath);
       sessions.push({
         id: sid,
         label: sessionName || (cwd ? `${path.basename(cwd)} · ${sid.slice(0, 8)}` : sid.slice(0, 8)),
@@ -170,15 +282,83 @@ export class CacheKeepManager implements vscode.Disposable {
         ttlSeconds: this.config.ttlSeconds,
         pingsSentTotal: streak,
         chatActive: sessionArmed && chatActive,
+        inputTokens: usage.inputTokens,
+        cachedInputTokens: usage.cachedInputTokens,
       });
+    }
+
+    if (this.config.targets.includes('codex')) {
+      const folders = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) || [];
+      const codexStates = this.codexTracker.getStates(
+        folders, this.config.ttlSeconds, this.config.codexKeepAlive
+      );
+      for (const session of codexStates) {
+        const snapshot = this.codexTracker.getSnapshot(session.id);
+        if (!snapshot) { continue; }
+        let auto = this.codexAuto.get(session.id);
+        if (!auto) {
+          const anchor = snapshot.lastCompletedMs || snapshot.lastEventMs || Date.now();
+          auto = { paused: false, streak: 0, total: 0, anchorMs: anchor, idleStartedMs: anchor,
+            lastUserMessageMs: snapshot.lastUserMessageMs, pinging: false };
+          this.codexAuto.set(session.id, auto);
+        }
+        if (snapshot.lastUserMessageMs > auto.lastUserMessageMs) {
+          auto.lastUserMessageMs = snapshot.lastUserMessageMs;
+          auto.streak = 0;
+          auto.total = 0;
+          auto.idleStartedMs = snapshot.lastUserMessageMs;
+        }
+        if (!snapshot.taskActive && snapshot.lastCompletedMs > auto.anchorMs) {
+          auto.anchorMs = snapshot.lastCompletedMs;
+        }
+        const enabled = this.config.codexKeepAlive;
+        const counting = enabled && !auto.paused && !snapshot.taskActive && !auto.pinging;
+        session.trackingOnly = !enabled;
+        session.armed = enabled && !auto.paused;
+        session.keepAliveStreak = auto.streak;
+        session.keepAliveMaxPings = this.config.keepAliveMaxPings;
+        session.pingsSentTotal = auto.total;
+        session.chatActive = snapshot.taskActive || auto.pinging;
+        session.secondsRemaining = counting
+          ? Math.max(0, Math.round(this.config.ttlSeconds - (Date.now() - auto.anchorMs) / 1000))
+          : this.config.ttlSeconds;
+        sessions.push(session);
+      }
     }
 
     // Counting sessions first (most urgent on top — also drives the status bar), then active chats.
     sessions.sort((a, b) =>
+      Number(a.trackingOnly ?? false) - Number(b.trackingOnly ?? false) ||
       Number(a.chatActive ?? false) - Number(b.chatActive ?? false) ||
       a.secondsRemaining - b.secondsRemaining
     );
     return sessions;
+  }
+
+  private getClaudeTokenUsage(sid: string, transcriptPath: string): { inputTokens: number; cachedInputTokens: number } {
+    const cached = this.claudeUsageCache.get(sid);
+    if (cached && Date.now() - cached.checkedAt < 2000) { return cached; }
+    let inputTokens = 0;
+    let cachedInputTokens = 0;
+    if (transcriptPath) {
+      try {
+        const lines = fs.readFileSync(transcriptPath, 'utf8').split(/\r?\n/);
+        for (let index = lines.length - 1; index >= 0; index -= 1) {
+          if (!lines[index]) { continue; }
+          try {
+            const usage = JSON.parse(lines[index]).message?.usage;
+            if (!usage) { continue; }
+            cachedInputTokens = Number(usage.cache_read_input_tokens) || 0;
+            inputTokens = (Number(usage.input_tokens) || 0) + cachedInputTokens +
+              (Number(usage.cache_creation_input_tokens) || 0);
+            break;
+          } catch { /* ignore partial transcript lines */ }
+        }
+      } catch { /* transcript is optional */ }
+    }
+    const result = { checkedAt: Date.now(), inputTokens, cachedInputTokens };
+    this.claudeUsageCache.set(sid, result);
+    return result;
   }
 
   /** Prefer the conversation title/prompt; Claude's live-process name is only a fallback. */

@@ -5,9 +5,9 @@ metrics, the methodology used to measure it, and — honestly — the limits of 
 gathered so far. It is provider-neutral: the method applies to any CLI that resumes a
 session and reports per-turn input vs. cached-input token counts.
 
-The findings were originally captured during the experimental Codex investigation
-(`archive/codex-support` tag). The Codex *code* was dropped; this analysis is kept because
-it is the durable, reusable part.
+The findings were originally captured during the Codex keep-alive investigation.
+This analysis is kept because it is the durable, reusable part — the method applies
+to any provider's session cache.
 
 ## What we are trying to prove
 

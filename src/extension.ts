@@ -16,6 +16,8 @@ function getConfig(): CacheWardenConfig {
     pingMethod: cfg.get<'clipboard' | 'notify'>('pingMethod', 'clipboard'),
     showStatusBar: cfg.get<boolean>('showStatusBar', true),
     claudePath: cfg.get<string>('claudePath', ''),
+    codexPath: cfg.get<string>('codexPath', ''),
+    codexKeepAlive: cfg.get<boolean>('codexKeepAlive', false),
   };
 }
 
@@ -28,8 +30,8 @@ export function activate(context: vscode.ExtensionContext) {
   const sidebar = new SidebarProvider(
     context.extensionUri,
     (id) => { manager.toggle(id); },
-    () => { manager.resetStreak(); },
-    () => { void manager.forcePing(); },
+    (id) => { manager.resetStreak(id); },
+    (id) => { void manager.forcePing(id); },
     (id) => { manager.dismiss(id); }
   );
 
