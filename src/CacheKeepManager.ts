@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { HookInstaller } from './HookInstaller';
+import { parseClaudeAiTitle } from './ClaudeTitleParser';
 import { CacheWardenConfig, SessionState } from './types';
 
 /**
@@ -186,6 +187,14 @@ export class CacheKeepManager implements vscode.Disposable {
     if (cached && Date.now() - cached.checkedAt < 30_000) { return cached.name; }
 
     let name = '';
+    // Claude's VS Code UI writes its generated tab title into the transcript.
+    // Prefer the latest such event so our card matches the visible chat header.
+    if (transcriptPath) {
+      try {
+        name = parseClaudeAiTitle(fs.readFileSync(transcriptPath, 'utf8'), sid);
+      } catch { /* transcript may not exist yet */ }
+    }
+
     if (transcriptPath) {
       try {
         const index = JSON.parse(fs.readFileSync(path.join(path.dirname(transcriptPath), 'sessions-index.json'), 'utf8'));
