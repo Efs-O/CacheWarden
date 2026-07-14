@@ -36,7 +36,7 @@ Open in VS Code → F5 → Extension Development Host opens.
 
 - `cacheWarden.ttlSeconds` — default 280 (fires 20s before 5-min TTL)
 - `cacheWarden.keepAliveDurationSeconds` — default 1800 (stop after 30 min idle)
-- `cacheWarden.keepAliveMaxPings` — default 3 (consecutive ping cap)
+- `cacheWarden.keepAliveMaxPings` — default 7 (consecutive ping cap, ~28 min coverage)
 - `cacheWarden.targets` — default `["claude"]`
 - `cacheWarden.pingMethod` — `"clipboard"` (default) | `"notify"`
 - `cacheWarden.showStatusBar` — default true
@@ -58,4 +58,4 @@ If the CLI requires a reply, emit only the inert marker [AW_KEEPALIVE_OK].
 ## MVP scope
 
 Phase 1: single shared session, IdleTracker + TimerStore + CacheKeepManager + StatusBarItem.  
-Codex support is not implemented yet.
+Codex support: read-only session tracking is on when `codex` is in `targets`; keep-alive pings are opt-in via `cacheWarden.codexKeepAlive` (off by default, consumes Codex usage).

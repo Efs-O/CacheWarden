@@ -2,11 +2,14 @@
 
 All notable changes to CacheWarden are documented here.
 
-## [Unreleased]
+## [0.3.5]
 
 ### Added
-- Experimental, opt-in Codex countdowns and automatic per-session keep-alive
-  pings with caps, idle-duration limits, collision checks, and fail-closed pause.
+- Codex support: read-only session tracking cards (no Codex usage), plus an
+  opt-in `cacheWarden.codexKeepAlive` for guarded per-session countdowns and
+  keep-alive pings with caps, idle-duration limits, collision checks, and
+  fail-closed pause. Keep-alive is off by default and its pings are real Codex
+  turns that consume your Codex usage.
 - Cached/total input-token metrics on both Codex and Claude session cards.
 - Automatic discovery of native Codex executables installed by npm or bundled
   with the OpenAI VS Code extension on Windows.

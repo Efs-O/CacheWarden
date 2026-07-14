@@ -11,7 +11,7 @@ interface SessionState {
   ttlSeconds: number;
   pingsSentTotal: number;
   trackingOnly?: boolean;
-  experimentalPingEnabled?: boolean;
+  pingEnabled?: boolean;
   inputTokens?: number;
   cachedInputTokens?: number;
 }
@@ -80,9 +80,9 @@ export function SessionCard({ session, onToggle, onReset, onPingNow, onDismiss }
 
       <div style={styles.row}>
         {trackingOnly ? (
-          session.experimentalPingEnabled
+          session.pingEnabled
             ? <button style={styles.btn} onClick={onPingNow} title="Run one guarded Codex cache validation turn">Test Ping Now</button>
-            : <button style={{ ...styles.btn, ...styles.btnOff }} disabled title="Enable the experimental setting to test manually">
+            : <button style={{ ...styles.btn, ...styles.btnOff }} disabled title="Enable the Codex keep-alive setting to ping manually (consumes Codex usage)">
                 Keep-alive disabled
               </button>
         ) : <button

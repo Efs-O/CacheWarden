@@ -17,7 +17,7 @@ function getConfig(): CacheWardenConfig {
     showStatusBar: cfg.get<boolean>('showStatusBar', true),
     claudePath: cfg.get<string>('claudePath', ''),
     codexPath: cfg.get<string>('codexPath', ''),
-    codexExperimentalKeepAlive: cfg.get<boolean>('codexExperimentalKeepAlive', false),
+    codexKeepAlive: cfg.get<boolean>('codexKeepAlive', false),
   };
 }
 

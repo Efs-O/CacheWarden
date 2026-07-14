@@ -12,7 +12,7 @@ export interface SessionState {
   chatActive?: boolean;
   /** Session is observable, but automated keep-alive is deliberately unavailable. */
   trackingOnly?: boolean;
-  experimentalPingEnabled?: boolean;
+  pingEnabled?: boolean;
   inputTokens?: number;
   cachedInputTokens?: number;
 }
@@ -27,7 +27,7 @@ export interface CacheWardenConfig {
   showStatusBar: boolean;
   claudePath: string;
   codexPath: string;
-  codexExperimentalKeepAlive: boolean;
+  codexKeepAlive: boolean;
 }
 
 export const KEEPALIVE_MESSAGE = `[AW_TURN_TYPE: keep-alive]

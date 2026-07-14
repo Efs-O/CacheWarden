@@ -62,8 +62,8 @@ export class CacheKeepManager implements vscode.Disposable {
   toggle(id?: string) {
     if (id) {
       if (id.startsWith('codex:')) {
-        if (!this.config.codexExperimentalKeepAlive) {
-          void vscode.window.showInformationMessage('CacheWarden: enable experimental Codex keep-alive first.');
+        if (!this.config.codexKeepAlive) {
+          void vscode.window.showInformationMessage('CacheWarden: enable the Codex keep-alive setting first (it consumes Codex usage).');
           return;
         }
         const state = this.codexAuto.get(id);
@@ -80,7 +80,7 @@ export class CacheKeepManager implements vscode.Disposable {
       return;
     }
     if (!this.config.targets.includes('claude')) {
-      void vscode.window.showInformationMessage('CacheWarden: Codex is tracking-only during the experiment.');
+      void vscode.window.showInformationMessage('CacheWarden: Codex is tracking-only unless you enable Codex keep-alive.');
       return;
     }
     if (this.armed) {
@@ -141,9 +141,9 @@ export class CacheKeepManager implements vscode.Disposable {
 
   async forcePing(id?: string) {
     if (id?.startsWith('codex:')) {
-      if (!this.config.codexExperimentalKeepAlive) {
+      if (!this.config.codexKeepAlive) {
         void vscode.window.showInformationMessage(
-          'CacheWarden: enable the experimental Codex keep-alive setting to run a manual validation ping.'
+          'CacheWarden: enable the Codex keep-alive setting to run a manual ping (it consumes Codex usage).'
         );
         return;
       }
@@ -290,7 +290,7 @@ export class CacheKeepManager implements vscode.Disposable {
     if (this.config.targets.includes('codex')) {
       const folders = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) || [];
       const codexStates = this.codexTracker.getStates(
-        folders, this.config.ttlSeconds, this.config.codexExperimentalKeepAlive
+        folders, this.config.ttlSeconds, this.config.codexKeepAlive
       );
       for (const session of codexStates) {
         const snapshot = this.codexTracker.getSnapshot(session.id);
@@ -311,7 +311,7 @@ export class CacheKeepManager implements vscode.Disposable {
         if (!snapshot.taskActive && snapshot.lastCompletedMs > auto.anchorMs) {
           auto.anchorMs = snapshot.lastCompletedMs;
         }
-        const enabled = this.config.codexExperimentalKeepAlive;
+        const enabled = this.config.codexKeepAlive;
         const counting = enabled && !auto.paused && !snapshot.taskActive && !auto.pinging;
         session.trackingOnly = !enabled;
         session.armed = enabled && !auto.paused;

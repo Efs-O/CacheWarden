@@ -26,7 +26,7 @@ export class CodexSessionTracker {
     private readonly sessionIndexPath = path.join(path.dirname(sessionsRoot), 'session_index.jsonl')
   ) {}
 
-  getStates(workspaceFolders: string[], ttlSeconds: number, experimentalPingEnabled = false): SessionState[] {
+  getStates(workspaceFolders: string[], ttlSeconds: number, pingEnabled = false): SessionState[] {
     this.refresh();
     const now = Date.now();
     const byId = new Map<string, CodexSessionSnapshot>();
@@ -46,7 +46,7 @@ export class CodexSessionTracker {
       label: this.indexedTitles.get(snapshot.sessionId) || snapshot.title || `Codex · ${snapshot.sessionId.slice(0, 8)}`,
       armed: false,
       trackingOnly: true,
-      experimentalPingEnabled,
+      pingEnabled,
       keepAliveStreak: 0,
       keepAliveMaxPings: 0,
       secondsRemaining: ttlSeconds,

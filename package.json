@@ -68,7 +68,7 @@
           "default": [
             "claude"
           ],
-          "description": "Which assistant providers to watch. Codex automatic keep-alive also requires the experimental opt-in setting."
+          "description": "Which assistant providers to watch. Codex automatic keep-alive also requires the cacheWarden.codexKeepAlive opt-in."
         },
         "cacheWarden.hookEnabled": {
           "type": "boolean",
@@ -97,12 +97,12 @@
         "cacheWarden.codexPath": {
           "type": "string",
           "default": "",
-          "description": "Experimental: absolute path to the Codex executable. Leave empty to auto-detect npm and OpenAI VS Code extension installations or use PATH."
+          "description": "Absolute path to the Codex executable. Leave empty to auto-detect npm and OpenAI VS Code extension installations or use PATH."
         },
-        "cacheWarden.codexExperimentalKeepAlive": {
+        "cacheWarden.codexKeepAlive": {
           "type": "boolean",
           "default": false,
-          "description": "Experimental CacheWarden opt-in: enable guarded Codex countdowns, manual pings, and automatic keep-alive. Codex turns consume usage; final cache-benefit and soak validation is still in progress."
+          "description": "Enable Codex keep-alive: guarded per-session countdowns, manual pings, and automatic keep-alive. Off by default. Note: Codex keep-alive fires real Codex turns that consume your Codex usage."
         }
       }
     },
@@ -120,7 +120,8 @@
         {
           "type": "webview",
           "id": "cacheWarden.panel",
-          "name": "Cache Sessions"
+          "name": "Cache Sessions",
+          "icon": "images/icon.svg"
         }
       ]
     },
