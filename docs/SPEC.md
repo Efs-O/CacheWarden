@@ -118,7 +118,7 @@ it can be enabled when the VS Code chat API stabilises.
 
 ```
 keepAliveStreak: number   // consecutive pings since last real turn
-keepAliveMaxPings: number // default 3, configurable
+keepAliveMaxPings: number // default 7, configurable
 ```
 
 After `maxPings` consecutive auto-pings with no real activity, stop pinging and
@@ -134,7 +134,7 @@ cache-read turn, ~$0.000X).
 ```jsonc
 "cacheWarden.ttlSeconds": 280,              // default 4:40 before TTL fires
 "cacheWarden.keepAliveDurationSeconds": 1800, // stop after 30 min of idle
-"cacheWarden.keepAliveMaxPings": 3,         // consecutive ping cap
+"cacheWarden.keepAliveMaxPings": 7,         // consecutive ping cap (~28 min coverage)
 "cacheWarden.targets": ["claude"],          // which Claude sidebar to watch
 "cacheWarden.pingMethod": "clipboard",      // "clipboard" | "notify"
 "cacheWarden.showStatusBar": true
