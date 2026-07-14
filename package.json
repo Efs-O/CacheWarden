@@ -109,7 +109,8 @@
         {
           "type": "webview",
           "id": "cacheWarden.panel",
-          "name": "Cache Sessions"
+          "name": "Cache Sessions",
+          "icon": "images/icon.svg"
         }
       ]
     },
