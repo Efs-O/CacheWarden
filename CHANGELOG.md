@@ -2,6 +2,17 @@
 
 All notable changes to CacheWarden are documented here.
 
+## [0.3.4]
+
+### Changed
+- Session card titles now prefer Claude's generated tab title (`ai-title`) or
+  latest prompt from the transcript, so the card matches the visible chat header
+  more reliably. Falls back to the previous session-index / history sources.
+
+### Fixed
+- Manifest: the sidebar view now declares an icon, clearing a VS Code
+  manifest-validation hint.
+
 ## [0.3.3]
 
 ### Changed
