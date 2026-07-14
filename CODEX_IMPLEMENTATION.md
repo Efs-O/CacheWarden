@@ -69,6 +69,11 @@ installation behavior unchanged.
   `codex` from PATH.
 - Add `cacheWarden.codexExperimentalKeepAlive`, default `false`.
 - Tracking may be enabled independently from keep-alive execution.
+- This flag is owned by CacheWarden; it is not an OpenAI experimental setting.
+- After all merge gates pass, replace it with
+  `cacheWarden.codexKeepAliveEnabled`. Offer an explicit one-time migration for
+  users who opted in, deprecate the old key for one release, and do not silently
+  enable Codex for other users.
 
 ### 3. Codex session discovery
 
@@ -222,6 +227,24 @@ a separate decision and do not ship automated Codex keep-alive.
 - Result: PASS for same-session/no-tool/no-write safety in the disposable test;
   BLOCKED for cache-benefit evidence until usage resets.
 
-Automatic Codex scheduling remains intentionally unimplemented. The branch must
-not merge until the timed comparison is repeated successfully at least three
-times and the remaining soak/regression gates pass.
+### 2026-07-11 — experimental automatic scheduling
+
+- Implemented opt-in per-session countdowns using `task_complete` as the anchor.
+- Added real-user activity resets, per-session pause/reset/manual ping, maximum
+  streak and total-idle bounds, in-flight serialization, and automatic pause on
+  failure.
+- Verified live countdown start and reset after a normal user turn.
+- Verified a guarded manual turn returned `[CACHE_WARDEN_OK]` in the same session.
+- Added a startup baseline so extension reload does not arm historical rollout
+  files; sessions appear only after new post-activation activity.
+- Added cached/total last-turn token display for Codex and Claude Code.
+- Focused parser, tracker, runner, and baseline regression suite: 9 tests pass;
+  production build and TypeScript checks pass.
+- Result: PASS for initial live scheduling and reset behavior; PENDING for a full
+  automatic expiry/ping/re-anchor cycle, near-expiry concurrency test, repeated
+  cache-benefit comparison, and 30-minute soak/regression run.
+
+The branch must not merge until the timed comparison is repeated successfully at
+least three times and the remaining automatic-cycle and soak/regression gates
+pass. Only then should the experimental setting be graduated using the migration
+steps documented above.

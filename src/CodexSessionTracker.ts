@@ -8,14 +8,23 @@ interface TrackedFile {
   offset: number;
   remainder: string;
   snapshot: CodexSessionSnapshot;
+  visible: boolean;
+  baselineSize: number;
 }
 
 export class CodexSessionTracker {
   private readonly files = new Map<string, TrackedFile>();
   private readonly dismissed = new Set<string>();
+  private readonly indexedTitles = new Map<string, string>();
+  private indexOffset = 0;
+  private indexRemainder = '';
   private lastDiscoveryMs = 0;
+  private initialDiscoveryComplete = false;
 
-  constructor(private readonly sessionsRoot = path.join(os.homedir(), '.codex', 'sessions')) {}
+  constructor(
+    private readonly sessionsRoot = path.join(os.homedir(), '.codex', 'sessions'),
+    private readonly sessionIndexPath = path.join(path.dirname(sessionsRoot), 'session_index.jsonl')
+  ) {}
 
   getStates(workspaceFolders: string[], ttlSeconds: number, experimentalPingEnabled = false): SessionState[] {
     this.refresh();
@@ -23,6 +32,7 @@ export class CodexSessionTracker {
     const byId = new Map<string, CodexSessionSnapshot>();
     for (const tracked of this.files.values()) {
       const snapshot = tracked.snapshot;
+      if (!tracked.visible) { continue; }
       if (!snapshot.sessionId || this.dismissed.has(snapshot.sessionId)) { continue; }
       if (snapshot.lastEventMs && now - snapshot.lastEventMs > 2 * 3600_000) { continue; }
       if (!matchesWorkspace(snapshot.cwd, workspaceFolders)) { continue; }
@@ -33,7 +43,7 @@ export class CodexSessionTracker {
     return [...byId.values()].map(snapshot => ({
       id: `codex:${snapshot.sessionId}`,
       provider: 'codex',
-      label: snapshot.title || `Codex · ${snapshot.sessionId.slice(0, 8)}`,
+      label: this.indexedTitles.get(snapshot.sessionId) || snapshot.title || `Codex · ${snapshot.sessionId.slice(0, 8)}`,
       armed: false,
       trackingOnly: true,
       experimentalPingEnabled,
@@ -61,16 +71,57 @@ export class CodexSessionTracker {
   }
 
   private refresh(): void {
+    this.readSessionIndex();
     const now = Date.now();
     if (now - this.lastDiscoveryMs > 5000) {
       this.lastDiscoveryMs = now;
       for (const file of discoverRecentJsonl(this.sessionsRoot, now - 2 * 3600_000)) {
         if (!this.files.has(file)) {
-          this.files.set(file, { offset: 0, remainder: '', snapshot: emptyCodexSnapshot() });
+          let size = 0;
+          try {
+            const stat = fs.statSync(file);
+            size = stat.size;
+          } catch {}
+          this.files.set(file, {
+            offset: 0, remainder: '', snapshot: emptyCodexSnapshot(),
+            visible: this.initialDiscoveryComplete, baselineSize: size,
+          });
         }
       }
+      this.initialDiscoveryComplete = true;
     }
     for (const [file, tracked] of this.files) { this.readAppended(file, tracked); }
+  }
+
+  private readSessionIndex(): void {
+    let size = 0;
+    try { size = fs.statSync(this.sessionIndexPath).size; } catch { return; }
+    if (size < this.indexOffset) {
+      this.indexOffset = 0;
+      this.indexRemainder = '';
+      this.indexedTitles.clear();
+    }
+    if (size === this.indexOffset) { return; }
+    const length = size - this.indexOffset;
+    const buffer = Buffer.alloc(length);
+    let fd: number | undefined;
+    try {
+      fd = fs.openSync(this.sessionIndexPath, 'r');
+      fs.readSync(fd, buffer, 0, length, this.indexOffset);
+      this.indexOffset = size;
+    } catch { return; }
+    finally { if (fd !== undefined) { try { fs.closeSync(fd); } catch {} } }
+
+    const parts = (this.indexRemainder + buffer.toString('utf8')).split(/\r?\n/);
+    this.indexRemainder = parts.pop() || '';
+    for (const line of parts) {
+      try {
+        const entry = JSON.parse(line);
+        const id = String(entry.id || entry.session_id || '');
+        const title = String(entry.thread_name || '').replace(/\s+/g, ' ').trim();
+        if (id && title) { this.indexedTitles.set(id, title.length > 60 ? `${title.slice(0, 57)}…` : title); }
+      } catch { /* ignore malformed or partially-written index entries */ }
+    }
   }
 
   private readAppended(file: string, tracked: TrackedFile): void {
@@ -82,6 +133,7 @@ export class CodexSessionTracker {
       tracked.snapshot = emptyCodexSnapshot();
     }
     if (size === tracked.offset) { return; }
+    if (!tracked.visible && size > tracked.baselineSize) { tracked.visible = true; }
     const length = size - tracked.offset;
     const buffer = Buffer.alloc(length);
     let fd: number | undefined;

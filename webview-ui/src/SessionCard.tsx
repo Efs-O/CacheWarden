@@ -100,6 +100,9 @@ export function SessionCard({ session, onToggle, onReset, onPingNow, onDismiss }
           ? `Last turn: ${session.cachedInputTokens ?? 0}/${session.inputTokens ?? 0} cached input tokens`
           : `${keepAliveStreak}/${keepAliveMaxPings} consecutive pings · ${pingsSentTotal} total`}
       </div>
+      {!trackingOnly && session.inputTokens !== undefined && <div style={styles.meta}>
+        Last turn: {session.cachedInputTokens ?? 0}/{session.inputTokens} cached input tokens
+      </div>}
     </div>
   );
 }

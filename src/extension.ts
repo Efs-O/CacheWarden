@@ -30,7 +30,7 @@ export function activate(context: vscode.ExtensionContext) {
   const sidebar = new SidebarProvider(
     context.extensionUri,
     (id) => { manager.toggle(id); },
-    () => { manager.resetStreak(); },
+    (id) => { manager.resetStreak(id); },
     (id) => { void manager.forcePing(id); },
     (id) => { manager.dismiss(id); }
   );

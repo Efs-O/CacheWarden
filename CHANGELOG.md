@@ -2,6 +2,33 @@
 
 All notable changes to CacheWarden are documented here.
 
+## [Unreleased]
+
+### Added
+- Experimental, opt-in Codex countdowns and automatic per-session keep-alive
+  pings with caps, idle-duration limits, collision checks, and fail-closed pause.
+- Cached/total input-token metrics on both Codex and Claude session cards.
+- Automatic discovery of native Codex executables installed by npm or bundled
+  with the OpenAI VS Code extension on Windows.
+
+### Changed
+- Codex sessions present before extension activation are treated as a silent
+  baseline. A card appears only after new activity, avoiding stale countdowns on
+  reload.
+
+### Fixed
+- Claude cards now prefer the transcript's generated `ai-title`, matching the
+  title displayed in the Claude Code tab. Sessions without an `ai-title` now use
+  Claude's latest `last-prompt` instead of showing the initial prompt.
+- Codex cards now prefer the generated conversation title from
+  `~/.codex/session_index.jsonl`, matching the title shown by the Codex tab.
+- Codex card titles now use the text after `My request for Codex` instead of
+  displaying IDE-injected active-file and open-tab context.
+- Manual Codex validation pings no longer fail with `spawn codex.exe ENOENT`
+  when VS Code's extension host has a narrower `PATH` than the terminal.
+- CacheWarden's own Codex maintenance prompt no longer resets the real-user
+  activity anchor or ping streak.
+
 ## [0.3.3]
 
 ### Changed

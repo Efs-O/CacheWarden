@@ -1,5 +1,7 @@
 import { execFileSync, spawn } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 const CODEX_PING_MESSAGE = `[CACHE_WARDEN_KEEPALIVE]
 This is an inert cache validation turn.
@@ -108,7 +110,7 @@ export class CodexKeepAliveRunner {
   }
 }
 
-function resolveCodex(override: string): string {
+export function resolveCodex(override: string): string {
   if (override) { return override; }
   if (process.platform !== 'win32') { return 'codex'; }
   try {
@@ -117,5 +119,52 @@ function resolveCodex(override: string): string {
     const native = candidates.find(candidate => candidate.toLowerCase().endsWith('.exe') && fs.existsSync(candidate));
     if (native) { return native; }
   } catch {}
+
+  // VS Code's extension host often inherits a narrower PATH than the terminal.
+  // Resolve the native binary shipped by the npm package or Codex extension
+  // rather than trying to execute the Windows .cmd shim without a shell.
+  const appData = process.env.APPDATA;
+  if (appData) {
+    const npmPackageRoot = path.join(appData, 'npm', 'node_modules', '@openai', 'codex', 'node_modules');
+    const npmBinary = findNestedCodexExe(npmPackageRoot, 5);
+    if (npmBinary) { return npmBinary; }
+  }
+
+  const home = os.homedir();
+  for (const extensionsRoot of [path.join(home, '.vscode', 'extensions'), path.join(home, '.vscode-insiders', 'extensions')]) {
+    const extensionBinary = findCodexExtensionExe(extensionsRoot);
+    if (extensionBinary) { return extensionBinary; }
+  }
   return 'codex.exe';
+}
+
+function findCodexExtensionExe(extensionsRoot: string): string | undefined {
+  let versions: string[] = [];
+  try {
+    versions = fs.readdirSync(extensionsRoot)
+      .filter(name => name.toLowerCase().startsWith('openai.chatgpt-'))
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  } catch { return undefined; }
+  for (const version of versions) {
+    const binary = findNestedCodexExe(path.join(extensionsRoot, version, 'bin'), 3);
+    if (binary) { return binary; }
+  }
+  return undefined;
+}
+
+function findNestedCodexExe(root: string, maxDepth: number): string | undefined {
+  const visit = (dir: string, depth: number): string | undefined => {
+    if (depth > maxDepth) { return undefined; }
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return undefined; }
+    const direct = entries.find(entry => entry.isFile() && entry.name.toLowerCase() === 'codex.exe');
+    if (direct) { return path.join(dir, direct.name); }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) { continue; }
+      const found = visit(path.join(dir, entry.name), depth + 1);
+      if (found) { return found; }
+    }
+    return undefined;
+  };
+  return visit(root, 0);
 }

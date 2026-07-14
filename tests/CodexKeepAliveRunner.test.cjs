@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { parseCodexExecJsonl } = require('../.test-dist/CodexKeepAliveRunner.cjs');
+const { parseCodexExecJsonl, resolveCodex } = require('../.test-dist/CodexKeepAliveRunner.cjs');
 
 test('accepts a completed tool-free turn in the expected session', () => {
   const output = [
@@ -39,4 +39,10 @@ test('rejects incomplete or error output', () => {
   assert.equal(result.ok, false);
   assert.equal(result.completed, false);
   assert.equal(result.error, 'busy');
+});
+
+test('resolves an installed native Codex executable on Windows', { skip: process.platform !== 'win32' }, () => {
+  const executable = resolveCodex('');
+  assert.match(executable, /codex\.exe$/i);
+  assert.equal(require('node:fs').existsSync(executable), true);
 });

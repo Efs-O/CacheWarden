@@ -1,7 +1,7 @@
 {
   "name": "cache-warden",
   "displayName": "CacheWarden",
-  "description": "Keep your Anthropic prompt cache warm - auto-ping before the 5-minute TTL expires",
+  "description": "Keep Claude Code and opt-in Codex prompt caches warm with bounded per-session pings",
   "version": "0.3.3",
   "publisher": "Efsoo",
   "author": "Efs-O",
@@ -68,7 +68,7 @@
           "default": [
             "claude"
           ],
-          "description": "Which Claude sidebar to watch"
+          "description": "Which assistant providers to watch. Codex automatic keep-alive also requires the experimental opt-in setting."
         },
         "cacheWarden.hookEnabled": {
           "type": "boolean",
@@ -97,12 +97,12 @@
         "cacheWarden.codexPath": {
           "type": "string",
           "default": "",
-          "description": "Experimental: absolute path to the Codex executable. Leave empty to use PATH."
+          "description": "Experimental: absolute path to the Codex executable. Leave empty to auto-detect npm and OpenAI VS Code extension installations or use PATH."
         },
         "cacheWarden.codexExperimentalKeepAlive": {
           "type": "boolean",
           "default": false,
-          "description": "Experimental: enable manual guarded Codex validation pings. Automatic keep-alive remains disabled until cache and safety tests pass."
+          "description": "Experimental CacheWarden opt-in: enable guarded Codex countdowns, manual pings, and automatic keep-alive. Codex turns consume usage; final cache-benefit and soak validation is still in progress."
         }
       }
     },
@@ -143,7 +143,7 @@
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "build:webview": "node esbuild.config.mjs --webview",
-    "test:codex": "esbuild src/CodexJsonlParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexJsonlParser.cjs && esbuild src/CodexSessionTracker.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexSessionTracker.cjs && esbuild src/CodexKeepAliveRunner.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexKeepAliveRunner.cjs && node --test tests/CodexJsonlParser.test.cjs tests/CodexSessionTracker.test.cjs tests/CodexKeepAliveRunner.test.cjs",
+    "test:codex": "esbuild src/ClaudeTitleParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/ClaudeTitleParser.cjs && esbuild src/CodexJsonlParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexJsonlParser.cjs && esbuild src/CodexSessionTracker.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexSessionTracker.cjs && esbuild src/CodexKeepAliveRunner.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexKeepAliveRunner.cjs && node --test tests/ClaudeTitleParser.test.cjs tests/CodexJsonlParser.test.cjs tests/CodexSessionTracker.test.cjs tests/CodexKeepAliveRunner.test.cjs",
     "gen:icon": "node scripts/gen-icon.js",
     "package": "vsce package"
   },
