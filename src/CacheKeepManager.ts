@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { HookInstaller } from './HookInstaller';
 import { CodexSessionTracker } from './CodexSessionTracker';
-import { CodexKeepAliveRunner } from './CodexKeepAliveRunner';
+import { CodexKeepAliveRunner, isCodexThreadWriterConflict } from './CodexKeepAliveRunner';
 import { parseClaudeAiTitle } from './ClaudeTitleParser';
 import { CacheWardenConfig, SessionState } from './types';
 
@@ -24,7 +24,7 @@ export class CacheKeepManager implements vscode.Disposable {
   private readonly codexRunner = new CodexKeepAliveRunner();
   private readonly codexAuto = new Map<string, {
     paused: boolean; streak: number; total: number; anchorMs: number;
-    idleStartedMs: number; lastUserMessageMs: number; pinging: boolean;
+    idleStartedMs: number; lastUserMessageMs: number; pinging: boolean; retryAfterMs: number;
   }>();
   private readonly claudeUsageCache = new Map<string, { checkedAt: number; inputTokens: number; cachedInputTokens: number }>();
 
@@ -71,6 +71,20 @@ export class CacheKeepManager implements vscode.Disposable {
         this._onStateChange.fire(this.getStates());
         return;
       }
+      if (!this.config.targets.includes('claude')) {
+        void vscode.window.showInformationMessage('CacheWarden: enable Claude in the targets setting before turning on Claude keep-alive.');
+        return;
+      }
+      // A session card represents a per-session pause only. If the global hook was
+      // turned off, an OFF card should turn it back on rather than adding another pause.
+      if (!this.armed) {
+        this.arm();
+        if (this.hookInstaller.isSessionPaused(id)) {
+          this.hookInstaller.resumeSession(id);
+        }
+        this._onStateChange.fire(this.getStates());
+        return;
+      }
       if (this.hookInstaller.isSessionPaused(id)) {
         this.hookInstaller.resumeSession(id);
       } else {
@@ -91,7 +105,7 @@ export class CacheKeepManager implements vscode.Disposable {
   }
 
   private arm() {
-    this.hookInstaller.install(this.config.ttlSeconds, this.config.keepAliveMaxPings, this.config.claudePath);
+    this.hookInstaller.install(this.config.ttlSeconds, this.config.keepAliveMaxPings, this.config.keepAliveDurationSeconds, this.config.claudePath);
     this.armed = true;
     this._onStateChange.fire(this.getStates());
   }
@@ -114,7 +128,13 @@ export class CacheKeepManager implements vscode.Disposable {
       this._onStateChange.fire(this.getStates());
       return;
     }
-    this.hookInstaller.resetCounter();
+    if (id) {
+      // Unlike the command palette's global reset, a card reset is scoped to its
+      // session and starts a fresh bounded countdown when that session is armed.
+      this.hookInstaller.resetSession(id, this.armed && !this.hookInstaller.isSessionPaused(id));
+    } else {
+      this.hookInstaller.resetCounter();
+    }
     this._onStateChange.fire(this.getStates());
   }
 
@@ -164,6 +184,8 @@ export class CacheKeepManager implements vscode.Disposable {
       if (!result) { return; }
       if (result.ok) {
         void vscode.window.showInformationMessage('CacheWarden: Codex validation ping completed safely in the same session.');
+      } else if (isCodexThreadWriterConflict(result.error)) {
+        void vscode.window.showWarningMessage('CacheWarden: Codex is still writing this session; the ping was skipped and will be retried later.');
       } else {
         void vscode.window.showErrorMessage(`CacheWarden: Codex validation ping failed: ${result.error}`);
       }
@@ -190,6 +212,12 @@ export class CacheKeepManager implements vscode.Disposable {
       auto.streak += 1;
       auto.total += 1;
       auto.anchorMs = Date.now();
+      auto.retryAfterMs = 0;
+    } else if (isCodexThreadWriterConflict(result.error)) {
+      // Codex's rollout trail can briefly report a completed turn while its thread
+      // store still has a writer. This is transient and must not permanently pause
+      // the session or trigger an attempted write every second.
+      auto.retryAfterMs = Date.now() + 30_000;
     } else if (!manual) {
       auto.paused = true;
       void vscode.window.showErrorMessage(`CacheWarden: automatic Codex ping failed and was paused: ${result.error}`);
@@ -202,7 +230,7 @@ export class CacheKeepManager implements vscode.Disposable {
     for (const session of states) {
       if (session.provider !== 'codex' || !session.armed || session.chatActive || session.secondsRemaining > 0) { continue; }
       const auto = this.codexAuto.get(session.id);
-      if (!auto || auto.pinging || auto.streak >= this.config.keepAliveMaxPings) { continue; }
+      if (!auto || auto.pinging || auto.retryAfterMs > Date.now() || auto.streak >= this.config.keepAliveMaxPings) { continue; }
       if (Date.now() - auto.idleStartedMs >= this.config.keepAliveDurationSeconds * 1000) { continue; }
       await this.runCodexPing(session.id, false);
     }
@@ -216,7 +244,7 @@ export class CacheKeepManager implements vscode.Disposable {
     } else if (!shouldArmClaude && this.armed) {
       this.disarm();
     } else if (this.armed) {
-      this.hookInstaller.install(config.ttlSeconds, config.keepAliveMaxPings, config.claudePath);
+      this.hookInstaller.install(config.ttlSeconds, config.keepAliveMaxPings, config.keepAliveDurationSeconds, config.claudePath);
     }
   }
 
@@ -299,7 +327,7 @@ export class CacheKeepManager implements vscode.Disposable {
         if (!auto) {
           const anchor = snapshot.lastCompletedMs || snapshot.lastEventMs || Date.now();
           auto = { paused: false, streak: 0, total: 0, anchorMs: anchor, idleStartedMs: anchor,
-            lastUserMessageMs: snapshot.lastUserMessageMs, pinging: false };
+            lastUserMessageMs: snapshot.lastUserMessageMs, pinging: false, retryAfterMs: 0 };
           this.codexAuto.set(session.id, auto);
         }
         if (snapshot.lastUserMessageMs > auto.lastUserMessageMs) {
@@ -307,6 +335,7 @@ export class CacheKeepManager implements vscode.Disposable {
           auto.streak = 0;
           auto.total = 0;
           auto.idleStartedMs = snapshot.lastUserMessageMs;
+          auto.retryAfterMs = 0;
         }
         if (!snapshot.taskActive && snapshot.lastCompletedMs > auto.anchorMs) {
           auto.anchorMs = snapshot.lastCompletedMs;

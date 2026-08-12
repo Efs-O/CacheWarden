@@ -10,6 +10,7 @@ interface SessionState {
   secondsRemaining: number;
   ttlSeconds: number;
   pingsSentTotal: number;
+  chatActive?: boolean;
   trackingOnly?: boolean;
   pingEnabled?: boolean;
   inputTokens?: number;
@@ -31,7 +32,7 @@ function formatSeconds(s: number): string {
 }
 
 export function SessionCard({ session, onToggle, onReset, onPingNow, onDismiss }: Props) {
-  const { label, provider = 'claude', armed, trackingOnly, keepAliveStreak, keepAliveMaxPings, secondsRemaining, ttlSeconds, pingsSentTotal } = session;
+  const { label, provider = 'claude', armed, trackingOnly, chatActive, keepAliveStreak, keepAliveMaxPings, secondsRemaining, ttlSeconds, pingsSentTotal } = session;
   const progress = ttlSeconds > 0 ? secondsRemaining / ttlSeconds : 0;
   const timeStr = secondsRemaining === 0 ? 'expired' : formatSeconds(secondsRemaining);
   const isExpired = secondsRemaining === 0;
@@ -92,7 +93,14 @@ export function SessionCard({ session, onToggle, onReset, onPingNow, onDismiss }
           {armed ? 'Cache Keep ON' : 'Cache Keep OFF'}
         </button>}
         {!trackingOnly && <button style={styles.btn} onClick={onReset}>Reset</button>}
-        {!trackingOnly && <button style={styles.btn} onClick={onPingNow}>Ping Now</button>}
+        {!trackingOnly && provider === 'codex' && <button
+          style={{ ...styles.btn, ...(chatActive ? styles.btnDisabled : {}) }}
+          onClick={onPingNow}
+          disabled={chatActive}
+          title={chatActive ? 'Wait for the current Codex turn to finish before sending a validation ping' : 'Run one guarded Codex cache validation turn'}
+        >
+          Ping Now
+        </button>}
       </div>
 
       <div style={styles.meta}>
@@ -187,6 +195,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fff',
     borderColor: '#f85149',
   },
+  btnDisabled: { opacity: 0.55, cursor: 'not-allowed' },
   meta: {
     fontSize: 11,
     opacity: 0.6,

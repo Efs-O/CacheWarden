@@ -2,7 +2,7 @@
   "name": "cache-warden",
   "displayName": "CacheWarden",
   "description": "Keep Claude Code and opt-in Codex prompt caches warm with bounded per-session pings",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "publisher": "Efsoo",
   "author": "Efs-O",
   "license": "Apache-2.0",
@@ -75,15 +75,6 @@
           "default": true,
           "description": "Install the Claude Code Stop hook that automatically fires keepalive pings"
         },
-        "cacheWarden.pingMethod": {
-          "type": "string",
-          "enum": [
-            "clipboard",
-            "notify"
-          ],
-          "default": "clipboard",
-          "description": "How CacheWarden prepares keepalive pings for the current chat sidebar"
-        },
         "cacheWarden.showStatusBar": {
           "type": "boolean",
           "default": true,
@@ -144,7 +135,7 @@
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "build:webview": "node esbuild.config.mjs --webview",
-    "test:codex": "esbuild src/ClaudeTitleParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/ClaudeTitleParser.cjs && esbuild src/CodexJsonlParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexJsonlParser.cjs && esbuild src/CodexSessionTracker.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexSessionTracker.cjs && esbuild src/CodexKeepAliveRunner.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexKeepAliveRunner.cjs && node --test tests/ClaudeTitleParser.test.cjs tests/CodexJsonlParser.test.cjs tests/CodexSessionTracker.test.cjs tests/CodexKeepAliveRunner.test.cjs",
+    "test:codex": "esbuild src/ClaudeTitleParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/ClaudeTitleParser.cjs && esbuild src/CodexJsonlParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexJsonlParser.cjs && esbuild src/CodexSessionTracker.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexSessionTracker.cjs && esbuild src/CodexKeepAliveRunner.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexKeepAliveRunner.cjs && esbuild src/HookInstaller.ts --bundle --platform=node --format=cjs --outfile=.test-dist/HookInstaller.cjs && node --test tests/ClaudeTitleParser.test.cjs tests/CodexJsonlParser.test.cjs tests/CodexSessionTracker.test.cjs tests/CodexKeepAliveRunner.test.cjs tests/HookInstaller.test.cjs",
     "gen:icon": "node scripts/gen-icon.js",
     "package": "vsce package"
   },

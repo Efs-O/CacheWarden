@@ -13,7 +13,6 @@ function getConfig(): CacheWardenConfig {
     keepAliveMaxPings: cfg.get<number>('keepAliveMaxPings', 7),
     targets: cfg.get<string[]>('targets', ['claude']),
     hookEnabled: cfg.get<boolean>('hookEnabled', true),
-    pingMethod: cfg.get<'clipboard' | 'notify'>('pingMethod', 'clipboard'),
     showStatusBar: cfg.get<boolean>('showStatusBar', true),
     claudePath: cfg.get<string>('claudePath', ''),
     codexPath: cfg.get<string>('codexPath', ''),

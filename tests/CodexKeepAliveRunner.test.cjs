@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { parseCodexExecJsonl, resolveCodex } = require('../.test-dist/CodexKeepAliveRunner.cjs');
+const { isCodexThreadWriterConflict, parseCodexExecJsonl, resolveCodex } = require('../.test-dist/CodexKeepAliveRunner.cjs');
 
 test('accepts a completed tool-free turn in the expected session', () => {
   const output = [
@@ -39,6 +39,11 @@ test('rejects incomplete or error output', () => {
   assert.equal(result.ok, false);
   assert.equal(result.completed, false);
   assert.equal(result.error, 'busy');
+});
+
+test('identifies transient Codex thread-writer conflicts', () => {
+  assert.equal(isCodexThreadWriterConflict('thread-store conflict: thread session-1 already has an active writer'), true);
+  assert.equal(isCodexThreadWriterConflict('Codex exited with code 1'), false);
 });
 
 test('resolves an installed native Codex executable on Windows', { skip: process.platform !== 'win32' }, () => {

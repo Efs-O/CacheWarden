@@ -34,7 +34,8 @@ TTL, re-anchoring the window so your context stays cached while you're idle.
 - **Codex support** — incrementally observes local rollout files to show your
   Codex sessions, and (opt-in) resumes the exact idle session with a guarded
   read-only turn, failing closed if the session is active, forks, invokes a tool,
-  times out, or returns an error.
+  times out, or returns an error. A transient Codex thread-writer conflict is
+  skipped and retried after a short cooldown instead of disabling the session.
 - **Cache metrics** — shows cached versus total input tokens from the latest turn
   for both Claude Code and Codex when the provider reports them.
 
@@ -101,7 +102,7 @@ is read-only and does not spend any Codex usage.
 **From VSIX:**
 
 ```bash
-code --install-extension cache-warden-0.3.5.vsix
+code --install-extension cache-warden-0.3.6.vsix
 ```
 
 Or in VS Code: Extensions panel → `…` menu → **Install from VSIX…**
@@ -115,7 +116,6 @@ Or in VS Code: Extensions panel → `…` menu → **Install from VSIX…**
 | `cacheWarden.keepAliveMaxPings` | `7` | Max consecutive pings per idle session (~28 min coverage). |
 | `cacheWarden.targets` | `["claude"]` | Providers to watch: `claude`, `codex`, or both. |
 | `cacheWarden.hookEnabled` | `true` | Install the Claude Code hook that fires pings automatically. |
-| `cacheWarden.pingMethod` | `"clipboard"` | How pings are prepared (`clipboard` or `notify`). |
 | `cacheWarden.showStatusBar` | `true` | Show the cache countdown in the status bar. |
 | `cacheWarden.claudePath` | `""` | Absolute path to the Claude Code binary. Empty = auto-detect. |
 | `cacheWarden.codexPath` | `""` | Absolute path to the Codex binary. Empty = auto-detect. |

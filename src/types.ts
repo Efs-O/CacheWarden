@@ -23,7 +23,6 @@ export interface CacheWardenConfig {
   keepAliveMaxPings: number;
   targets: string[];
   hookEnabled: boolean;
-  pingMethod: 'clipboard' | 'notify';
   showStatusBar: boolean;
   claudePath: string;
   codexPath: string;
