@@ -16,6 +16,11 @@ export interface CodexRunDiagnostics {
   error: string;
 }
 
+/** Codex refuses concurrent resumes of the same thread. It is safe to retry once its writer exits. */
+export function isCodexThreadWriterConflict(error: string): boolean {
+  return /thread-store conflict|already has an active writer/i.test(error);
+}
+
 export function parseCodexExecJsonl(output: string, expectedSessionId: string): CodexRunDiagnostics {
   let observedSessionId = '';
   let completed = false;

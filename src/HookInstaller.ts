@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { spawn } from 'child_process';
 
 const HOOK_ID = 'cache-warden-keepalive';
 
@@ -12,9 +13,9 @@ export class HookInstaller {
   readonly sessionsDir = path.join(this.stateDir, 'sessions');
   readonly trashDir = path.join(this.stateDir, 'trash');
 
-  install(intervalSeconds: number, maxLoops: number, claudePath = ''): void {
+  install(intervalSeconds: number, maxLoops: number, keepAliveDurationSeconds: number, claudePath = ''): void {
     fs.mkdirSync(this.claudeDir, { recursive: true });
-    fs.writeFileSync(this.scriptPath, buildScript(intervalSeconds, maxLoops, claudePath), 'utf8');
+    fs.writeFileSync(this.scriptPath, buildScript(intervalSeconds, maxLoops, keepAliveDurationSeconds, claudePath), 'utf8');
     // Legacy single-session state files from <= v0.1.x
     try { fs.rmSync(path.join(this.stateDir, 'gen'), { force: true }); } catch {}
     try { fs.rmSync(path.join(this.stateDir, 'last_ping'), { force: true }); } catch {}
@@ -37,6 +38,17 @@ export class HookInstaller {
       for (const sid of fs.readdirSync(this.sessionsDir)) {
         fs.rmSync(path.join(this.sessionsDir, sid, 'last_ping'), { force: true });
       }
+    } catch {}
+  }
+
+  /** Reset one Claude card and, when armed, begin a new countdown for only that session. */
+  resetSession(sid: string, restart: boolean): void {
+    try { fs.rmSync(this.sessionFile(sid, 'last_ping'), { force: true }); } catch {}
+    if (!restart) { return; }
+    try {
+      spawn(process.execPath, [this.scriptPath, '--restart', sid], {
+        detached: true, stdio: 'ignore', windowsHide: true,
+      }).unref();
     } catch {}
   }
 
@@ -137,7 +149,7 @@ export class HookInstaller {
   }
 }
 
-function buildScript(intervalSeconds: number, maxLoops: number, claudePathOverride: string): string {
+export function buildScript(intervalSeconds: number, maxLoops: number, keepAliveDurationSeconds: number, claudePathOverride: string): string {
   const stateDir = path.join(os.homedir(), '.claude', 'cache-warden').replace(/\\/g, '\\\\');
   return `#!/usr/bin/env node
 'use strict';
@@ -177,6 +189,7 @@ function resolveClaude() {
 }
 const CLAUDE = resolveClaude();
 const MAX_LOOPS = ${maxLoops};
+const MAX_IDLE_MS = ${Math.max(0, keepAliveDurationSeconds) * 1000};
 const INTERVAL_MS = parseInt(process.env.CACHE_WARDEN_INTERVAL_MS || '', 10) || ${intervalSeconds * 1000};
 // Inert prompt: a bare "." makes the model resume the interrupted task (it attempted Edits in forks).
 const PING_MSG = '[AW_TURN_TYPE: keep-alive]\\nThis is a cache keep-alive maintenance turn.\\nDo not use tools.\\nDo not post to the board.\\nDo not inspect or edit files.\\nDo not emit natural-language prose.\\nIf the CLI requires a reply, emit only the inert marker [AW_KEEPALIVE_OK].';
@@ -220,11 +233,23 @@ function findForkFile(projDir, forkId) {
   return '';
 }
 
-if (process.argv[2] === '--bg') {
+if (process.argv[2] === '--restart') {
+  const sessionId = process.argv[3] || '';
+  const sdir = sdirFor(sessionId);
+  if (!sessionId || fs.existsSync(path.join(sdir, 'paused'))) process.exit(0);
+  let projDir = '';
+  try { projDir = path.dirname(JSON.parse(fs.readFileSync(path.join(sdir, 'meta'), 'utf8')).transcriptPath || ''); } catch {}
+  const token = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  writeGen(sdir, token);
+  spawn(process.execPath, [__filename, '--bg', sessionId, '0', projDir, token, String(Date.now())],
+    { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  process.exit(0);
+} else if (process.argv[2] === '--bg') {
   const sessionId = process.argv[3];
   const count = parseInt(process.argv[4] || '0', 10);
   const projDir = process.argv[5] || '';
   const token = process.argv[6] || '';
+  const idleStartedAt = parseInt(process.argv[7] || '', 10) || Date.now();
   const sdir = sdirFor(sessionId);
 
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, INTERVAL_MS);
@@ -233,6 +258,7 @@ if (process.argv[2] === '--bg') {
   // Other sessions have their own gen file and no longer interfere.
   if (!token || readGen(sdir) !== token) process.exit(0);
   if (count >= MAX_LOOPS) process.exit(0);
+  if (Date.now() - idleStartedAt >= MAX_IDLE_MS) process.exit(0);
   // Paused from the panel: stop this session's chain without affecting any other session.
   if (fs.existsSync(path.join(sdir, 'paused'))) process.exit(0);
 
@@ -260,7 +286,7 @@ if (process.argv[2] === '--bg') {
       }
       // Chain only after a successful ping (next TTL window starts at ping completion).
       if (ok && count + 1 < MAX_LOOPS && readGen(sdir) === token && !fs.existsSync(path.join(sdir, 'paused'))) {
-        spawn(process.execPath, [__filename, '--bg', sessionId, String(count + 1), projDir, token],
+        spawn(process.execPath, [__filename, '--bg', sessionId, String(count + 1), projDir, token, String(idleStartedAt)],
           { detached: true, stdio: 'ignore', windowsHide: true }).unref();
       }
       process.exit(0);
@@ -288,7 +314,7 @@ if (process.argv[2] === '--bg') {
         const token = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
         writeGen(sdir, token);
         pruneSessions();
-        spawn(process.execPath, [__filename, '--bg', input.session_id, '0', projDir, token],
+        spawn(process.execPath, [__filename, '--bg', input.session_id, '0', projDir, token, String(Date.now())],
           { detached: true, stdio: 'ignore', windowsHide: true }).unref();
       }
     } catch (e) { logErr(e); }

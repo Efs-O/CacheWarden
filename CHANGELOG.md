@@ -2,6 +2,23 @@
 
 All notable changes to CacheWarden are documented here.
 
+## [0.3.6]
+
+### Fixed
+- Claude card **Reset** is now scoped to that card and starts a fresh bounded
+  countdown for the selected session. It no longer clears every Claude session.
+- A Claude card marked **Cache Keep OFF** now arms the global Claude hook when
+  necessary, then enables that session as the label promises.
+- Removed Claude's non-functional **Ping Now** button. Guarded manual pings are
+  available only for Codex sessions, where they can safely resume a known session.
+- `cacheWarden.keepAliveDurationSeconds` now bounds Claude keep-alive chains as
+  well as Codex chains.
+- A transient Codex `thread-store conflict` / active-writer response now delays
+  the next automatic ping for 30 seconds instead of permanently pausing it.
+
+### Changed
+- Removed the unused `cacheWarden.pingMethod` setting.
+
 ## [0.3.5]
 
 ### Added

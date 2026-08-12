@@ -13,6 +13,7 @@ images/social-preview.png
 
 # Dev / project scaffolding
 .coordination/**
+.github/**
 .vscode/**
 docs/**
 tests/**
