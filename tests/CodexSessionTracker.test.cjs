@@ -34,6 +34,7 @@ test('discovers, incrementally updates, filters, and dismisses Codex sessions', 
   assert.equal(states[0].trackingOnly, true);
   assert.equal(states[0].chatActive, false);
   assert.equal(states[0].cachedInputTokens, 900);
+  assert.equal(tracker.getRolloutPath(states[0].id), rollout);
 
   fs.appendFileSync(rollout, `${JSON.stringify({
     timestamp: new Date().toISOString(), type: 'event_msg', payload: { type: 'task_started' },

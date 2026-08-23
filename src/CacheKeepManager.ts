@@ -7,6 +7,8 @@ import { CodexSessionTracker } from './CodexSessionTracker';
 import { CodexKeepAliveRunner, isCodexThreadWriterConflict } from './CodexKeepAliveRunner';
 import { parseClaudeAiTitle } from './ClaudeTitleParser';
 import { CacheWardenConfig, SessionState } from './types';
+import { pathsShareWorkspace } from './PathContainment';
+import { readUtf8Tail } from './FileTail';
 
 /**
  * State is owned by the hook script (~/.claude/cache-warden-keepalive.js); this class only
@@ -59,7 +61,7 @@ export class CacheKeepManager implements vscode.Disposable {
    * With a session id: pause/resume just that session (other sessions keep running).
    * Without one (status-bar command): flip the global hook on/off.
    */
-  toggle(id?: string) {
+  toggle(id?: string): boolean | undefined {
     if (id) {
       if (id.startsWith('codex:')) {
         if (!this.config.codexKeepAlive) {
@@ -78,7 +80,7 @@ export class CacheKeepManager implements vscode.Disposable {
       // A session card represents a per-session pause only. If the global hook was
       // turned off, an OFF card should turn it back on rather than adding another pause.
       if (!this.armed) {
-        this.arm();
+        if (!this.arm()) { return; }
         if (this.hookInstaller.isSessionPaused(id)) {
           this.hookInstaller.resumeSession(id);
         }
@@ -98,22 +100,36 @@ export class CacheKeepManager implements vscode.Disposable {
       return;
     }
     if (this.armed) {
-      this.disarm();
+      if (!this.disarm()) { return; }
     } else {
-      this.arm();
+      if (!this.arm()) { return; }
     }
+    return this.armed;
   }
 
-  private arm() {
-    this.hookInstaller.install(this.config.ttlSeconds, this.config.keepAliveMaxPings, this.config.keepAliveDurationSeconds, this.config.claudePath);
-    this.armed = true;
+  private arm(): boolean {
+    try {
+      this.hookInstaller.install(this.config.ttlSeconds, this.config.keepAliveMaxPings, this.config.keepAliveDurationSeconds, this.config.claudePath);
+      this.armed = true;
+    } catch (error) {
+      this.armed = false;
+      void vscode.window.showErrorMessage(`CacheWarden could not install its Claude hooks: ${String(error)}`);
+    }
     this._onStateChange.fire(this.getStates());
+    return this.armed;
   }
 
-  private disarm() {
-    this.hookInstaller.uninstall();
-    this.armed = false;
+  private disarm(): boolean {
+    try {
+      this.hookInstaller.uninstall();
+      this.armed = false;
+    } catch (error) {
+      void vscode.window.showErrorMessage(`CacheWarden could not remove its Claude hooks: ${String(error)}`);
+      this._onStateChange.fire(this.getStates());
+      return false;
+    }
     this._onStateChange.fire(this.getStates());
+    return true;
   }
 
   resetStreak(id?: string) {
@@ -206,7 +222,8 @@ export class CacheKeepManager implements vscode.Disposable {
     }
     auto.pinging = true;
     this._onStateChange.fire(this.getStates());
-    const result = await this.codexRunner.run(snapshot.sessionId, snapshot.cwd, this.config.codexPath);
+    const rolloutPath = this.codexTracker.getRolloutPath(id);
+    const result = await this.codexRunner.run(snapshot.sessionId, snapshot.cwd, this.config.codexPath, rolloutPath || '');
     auto.pinging = false;
     if (result.ok) {
       auto.streak += 1;
@@ -371,7 +388,7 @@ export class CacheKeepManager implements vscode.Disposable {
     let cachedInputTokens = 0;
     if (transcriptPath) {
       try {
-        const lines = fs.readFileSync(transcriptPath, 'utf8').split(/\r?\n/);
+        const lines = readUtf8Tail(transcriptPath).split(/\r?\n/);
         for (let index = lines.length - 1; index >= 0; index -= 1) {
           if (!lines[index]) { continue; }
           try {
@@ -400,7 +417,7 @@ export class CacheKeepManager implements vscode.Disposable {
     // Prefer the latest such event so our card matches the visible chat header.
     if (transcriptPath) {
       try {
-        name = parseClaudeAiTitle(fs.readFileSync(transcriptPath, 'utf8'), sid);
+        name = parseClaudeAiTitle(readUtf8Tail(transcriptPath), sid);
       } catch { /* transcript may not exist yet */ }
     }
 
@@ -417,7 +434,7 @@ export class CacheKeepManager implements vscode.Disposable {
     if (!name) {
       try {
         const historyPath = path.join(os.homedir(), '.claude', 'history.jsonl');
-        const lines = fs.readFileSync(historyPath, 'utf8').split(/\r?\n/);
+        const lines = readUtf8Tail(historyPath).split(/\r?\n/);
         for (const line of lines) {
           if (!line) { continue; }
           try {
@@ -433,7 +450,7 @@ export class CacheKeepManager implements vscode.Disposable {
 
     if (!name && transcriptPath) {
       try {
-        for (const line of fs.readFileSync(transcriptPath, 'utf8').split(/\r?\n/)) {
+        for (const line of readUtf8Tail(transcriptPath).split(/\r?\n/)) {
           if (!line) { continue; }
           try {
             const entry = JSON.parse(line);
@@ -480,16 +497,12 @@ export class CacheKeepManager implements vscode.Disposable {
   private matchesWorkspace(cwd: string): boolean {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) { return true; }
-    const norm = (p: string) => p.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
-    const c = norm(cwd);
-    return folders.some(f => {
-      const w = norm(f.uri.fsPath);
-      return c === w || c.startsWith(w + '\\') || w.startsWith(c + '\\');
-    });
+    return pathsShareWorkspace(cwd, folders.map(folder => folder.uri.fsPath));
   }
 
   dispose() {
     clearInterval(this.timer);
+    this.codexRunner.dispose();
     this._onStateChange.dispose();
   }
 }

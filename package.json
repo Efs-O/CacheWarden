@@ -2,7 +2,7 @@
   "name": "cache-warden",
   "displayName": "CacheWarden",
   "description": "Keep Claude Code and opt-in Codex prompt caches warm with bounded per-session pings",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "publisher": "Efsoo",
   "author": "Efs-O",
   "license": "Apache-2.0",
@@ -44,16 +44,22 @@
         "cacheWarden.ttlSeconds": {
           "type": "number",
           "default": 280,
+          "minimum": 30,
+          "maximum": 3600,
           "description": "Seconds of idle before firing a keepalive ping (default 4:40, 20s before the 5-min TTL)"
         },
         "cacheWarden.keepAliveDurationSeconds": {
           "type": "number",
           "default": 1800,
+          "minimum": 0,
+          "maximum": 86400,
           "description": "Stop pinging after this many seconds of total idle (default 30 min)"
         },
         "cacheWarden.keepAliveMaxPings": {
           "type": "number",
           "default": 7,
+          "minimum": 1,
+          "maximum": 100,
           "description": "Maximum consecutive keepalive pings per idle session (~28 min coverage at 4-min intervals)"
         },
         "cacheWarden.targets": {
@@ -119,7 +125,7 @@
     "commands": [
       {
         "command": "cacheWarden.toggleArmed",
-        "title": "CacheWarden: Toggle Cache Keep"
+        "title": "CacheWarden: Toggle Claude Cache Keep"
       },
       {
         "command": "cacheWarden.resetStreak",
@@ -135,17 +141,22 @@
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "build:webview": "node esbuild.config.mjs --webview",
-    "test:codex": "esbuild src/ClaudeTitleParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/ClaudeTitleParser.cjs && esbuild src/CodexJsonlParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexJsonlParser.cjs && esbuild src/CodexSessionTracker.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexSessionTracker.cjs && esbuild src/CodexKeepAliveRunner.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexKeepAliveRunner.cjs && esbuild src/HookInstaller.ts --bundle --platform=node --format=cjs --outfile=.test-dist/HookInstaller.cjs && node --test tests/ClaudeTitleParser.test.cjs tests/CodexJsonlParser.test.cjs tests/CodexSessionTracker.test.cjs tests/CodexKeepAliveRunner.test.cjs tests/HookInstaller.test.cjs",
+    "type-check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
+    "test:codex": "esbuild src/ClaudeTitleParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/ClaudeTitleParser.cjs && esbuild src/CodexJsonlParser.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexJsonlParser.cjs && esbuild src/CodexSessionTracker.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexSessionTracker.cjs && esbuild src/CodexKeepAliveRunner.ts --bundle --platform=node --format=cjs --outfile=.test-dist/CodexKeepAliveRunner.cjs && esbuild src/HookInstaller.ts --bundle --platform=node --format=cjs --outfile=.test-dist/HookInstaller.cjs && esbuild src/PathContainment.ts --bundle --platform=node --format=cjs --outfile=.test-dist/PathContainment.cjs && esbuild src/FileTail.ts --bundle --platform=node --format=cjs --outfile=.test-dist/FileTail.cjs && node --test tests/ClaudeTitleParser.test.cjs tests/CodexJsonlParser.test.cjs tests/CodexSessionTracker.test.cjs tests/CodexKeepAliveRunner.test.cjs tests/HookInstaller.test.cjs tests/PathContainment.test.cjs tests/FileTail.test.cjs",
+    "test": "npm run test:codex",
+    "smoke:bundle": "node scripts/smoke-bundle.cjs",
+    "ci": "npm run type-check && npm test && npm run build && npm run smoke:bundle",
     "gen:icon": "node scripts/gen-icon.js",
-    "package": "vsce package"
+    "package": "npm run build && vsce package --no-dependencies --out cache-warden-release.vsix"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^20.0.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
-    "@types/vscode": "^1.85.0",
-    "esbuild": "^0.20.0",
+    "@types/vscode": "1.85.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.2",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "typescript": "^5.3.0"

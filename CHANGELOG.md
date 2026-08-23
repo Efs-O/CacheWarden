@@ -2,6 +2,57 @@
 
 All notable changes to CacheWarden are documented here.
 
+## [0.3.7]
+
+### Added
+- Three-platform CI now runs the same canonical type-check, test, production
+  build, and bundle-load smoke command used locally.
+- Open VSX and version-independent VSIX installation guidance.
+- Regression coverage for hook preservation/recovery, path containment, bounded
+  transcript reads, Codex process safeguards, and Forge-generated titles.
+
+### Changed
+- Codex maintenance resumes run in a disposable isolated `CODEX_HOME` and
+  explicitly disable project instructions, hooks, MCP servers, shell tools, web
+  search, and approvals while retaining the ephemeral flag, read-only sandbox,
+  and strict result validation.
+- The release package command now builds immediately before packaging and emits
+  one dependency-free canonical artifact.
+- Upgraded esbuild and added a lockfile-pinned VSIX packager to remove the
+  development dependency advisory and make packaging reproducible after `npm ci`.
+
+### Fixed
+- Forge-wrapped Codex sessions now use the first real user request as their card
+  title, and narrow sidebar action rows wrap instead of overflowing.
+- Claude hook upgrades preserve unrelated hooks even when several commands share
+  one hook entry, reject malformed settings without overwriting them, invalidate
+  detached chains on disable, and remove installed files after the last extension
+  instance deactivates.
+- Claude keep-alive subprocesses now time out, require a safe throwaway fork, and
+  use Claude Code safe mode with external capabilities disabled and argument-array
+  executable discovery rather than shell interpolation.
+- Claude CLI failures now report the nonzero exit and bounded stderr before
+  attempting to parse stdout, preserving rate-limit and authentication details.
+- Claude maintenance resumes now launch in the session's recorded project
+  directory so the CLI can resolve project-scoped conversation IDs.
+- Claude maintenance results now require the exact inert acknowledgement after
+  cleaning up the validated throwaway fork; unexpected response text fails the
+  ping instead of extending its chain.
+- Codex keep-alive now rejects unsafe session identifiers, completed-only tool
+  events, unexpected response text, and rollout paths or metadata that do not
+  identify the requested session. A validated rollout copy contains CLI writes
+  so the original rollout remains unchanged even when the installed Codex CLI
+  persists an `--ephemeral` resume.
+- Workspace filtering now respects Windows case-insensitivity and Unix
+  case-sensitivity without accepting sibling path-prefix collisions.
+- Large Claude and Codex session files are read through bounded head/tail windows
+  instead of blocking the extension host with unbounded whole-file reads.
+- The command-palette toggle is now explicitly named for Claude and confirms its
+  enabled or disabled state, avoiding a silent no-op appearance beside a Codex
+  tracking-only card.
+- The sidebar now uses a cryptographic nonce and an explicit webview resource
+  allowlist in its Content Security Policy.
+
 ## [0.3.6]
 
 ### Fixed

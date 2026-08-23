@@ -62,3 +62,22 @@ Fix the installer naming
 `);
   assert.equal(title, 'Fix the installer naming');
 });
+
+test('uses Forge\'s first real user prompt instead of its CLI transcript wrapper', () => {
+  const title = cleanCodexTitle(`You are the selected external coding agent in a Forge sidebar conversation.
+
+<forge_conversation>
+
+USER:
+Audit the extension tool routing
+and report any unsafe paths.
+
+ASSISTANT:
+I will inspect it.
+
+USER:
+Now check the Codex adapter too.
+
+</forge_conversation>`);
+  assert.equal(title, 'Audit the extension tool routing');
+});

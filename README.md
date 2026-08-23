@@ -46,15 +46,24 @@ On activation CacheWarden installs a small `Stop` / `UserPromptSubmit` hook into
 `~/.claude/cache-warden-keepalive.js`. When a Claude reply finishes, the hook
 arms a per-session countdown; just before the TTL it resumes the session headless
 (`--fork-session --print`, with all hooks disabled) to send an inert keep-alive
-turn, then deletes the throwaway fork. The Claude binary is auto-detected at
-runtime (override with `cacheWarden.claudePath` if needed).
+turn. The subprocess also uses Claude Code safe mode with skills, plugins, MCP,
+browser integration, slash commands, and built-in tools disabled, then deletes
+the throwaway fork. The Claude binary is auto-detected at runtime (override with
+`cacheWarden.claudePath` if needed).
 
 Codex does not use or modify Codex hooks or configuration. CacheWarden watches
 new activity appended to `~/.codex/sessions/` after extension activation. It
 does not populate the sidebar with historical sessions on reload. When an armed
-session expires, it runs a guarded `codex exec resume` with user configuration
-and rules ignored, a read-only sandbox, a 90-second timeout, and strict checks
-for the same session ID, successful completion, and zero tool calls.
+session expires, it runs a guarded, ephemeral `codex exec resume` with user
+configuration, project instructions, rules, hooks, MCP servers, shell tools, and
+web search disabled for that invocation. It uses a read-only sandbox, rejects
+approval requests, enforces a 90-second timeout, and accepts only the same
+session ID, an exact inert acknowledgement, successful completion, and zero
+tool calls. Before spawning Codex, CacheWarden validates the rollout's location
+and session metadata, copies it into a permission-restricted disposable
+`CODEX_HOME`, and points the maintenance process there. The temporary copy is
+removed after the process exits, so even Codex CLI versions that persist an
+ephemeral resume cannot append the maintenance turn to your original rollout.
 
 The keep-alive turn is deliberately inert:
 
@@ -85,27 +94,45 @@ CacheWarden is transparent about touching your Claude Code setup. When enabled i
   message above, then deletes the fork. These turns are real API calls; they
   consume `cache_read` tokens (the point is to *avoid* the larger `cache_creation`
   cost on your next message), and they count against your usage like any turn.
+- **Creates a temporary isolated Codex home for each opted-in Codex ping** — it
+  contains a copy of only the validated target rollout and a local link to the
+  existing Codex authentication file when present. It is private to your user
+  and removed after the Codex process exits.
 
-Nothing leaves your machine beyond the normal Claude Code traffic, and removing the
-extension reverts all of the above.
+CacheWarden has no telemetry, analytics, update ping, or network client of its
+own. Network traffic for keep-alives comes only from the Claude Code or Codex CLI
+turns described here. Turning off the Claude hook setting removes CacheWarden's
+hook entries and cancels active chains. When the last active VS Code window
+deactivates or the extension is disabled/uninstalled, CacheWarden also removes
+its installed script and state. Malformed Claude settings are left untouched and
+reported instead of being overwritten.
 
 Codex keep-alive pings are also real Codex turns and count against your Codex
 usage — which is why Codex keep-alive is opt-in and off by default. CacheWarden
-reads Codex rollout files but never edits them. Codex session tracking (the cards)
-is read-only and does not spend any Codex usage.
+reads Codex rollout files but never edits them; maintenance writes are contained
+in the disposable copy. Codex session tracking (the cards) is read-only and does
+not spend any Codex usage.
 
 > Actively developed and tested mainly on Windows. Please file issues for anything
 > rough.
 
 ## Install
 
-**From VSIX:**
+**Visual Studio Marketplace:** search for `CacheWarden` in VS Code, or run:
 
 ```bash
-code --install-extension cache-warden-0.3.6.vsix
+code --install-extension Efsoo.cache-warden
 ```
 
-Or in VS Code: Extensions panel → `…` menu → **Install from VSIX…**
+**Open VSX:** search for `CacheWarden` in VSCodium or another Open VSX client,
+or use the [`Efsoo.cache-warden` listing](https://open-vsx.org/extension/Efsoo/cache-warden).
+
+**From VSIX:** download the release artifact, then use the Extensions panel →
+`…` menu → **Install from VSIX…**, or run:
+
+```bash
+code --install-extension <downloaded-file>.vsix
+```
 
 ## Settings
 

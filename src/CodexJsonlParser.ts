@@ -57,10 +57,23 @@ export function applyCodexJsonlLine(snapshot: CodexSessionSnapshot, line: string
 
 export function cleanCodexTitle(value: unknown): string {
   let text = String(value || '');
-  const requestMarker = /^## My request for Codex:\s*$/im;
-  const marker = requestMarker.exec(text);
-  if (marker) { text = text.slice(marker.index + marker[0].length); }
+  const forgeTitle = extractForgeFirstUserLine(text);
+  if (forgeTitle) {
+    // Forge sends its initial CLI request as a wrapper containing the complete
+    // sidebar transcript. Its own conversation title is the first user line,
+    // so use that rather than showing the wrapper as the Codex session label.
+    text = forgeTitle;
+  } else {
+    const requestMarker = /^## My request for Codex:\s*$/im;
+    const marker = requestMarker.exec(text);
+    if (marker) { text = text.slice(marker.index + marker[0].length); }
+  }
   const oneLine = text.replace(/\s+/g, ' ').trim();
   if (!oneLine || oneLine.startsWith('<')) { return ''; }
   return oneLine.length > 60 ? `${oneLine.slice(0, 57)}…` : oneLine;
+}
+
+function extractForgeFirstUserLine(text: string): string {
+  const match = /<forge_conversation>\s*\r?\n\s*USER:\s*\r?\n\s*([^\r\n]+)/i.exec(text);
+  return match?.[1]?.trim() || '';
 }

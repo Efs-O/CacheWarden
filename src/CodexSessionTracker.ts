@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { applyCodexJsonlLine, CodexSessionSnapshot, emptyCodexSnapshot } from './CodexJsonlParser';
 import { SessionState } from './types';
+import { pathsShareWorkspace } from './PathContainment';
 
 interface TrackedFile {
   offset: number;
@@ -11,7 +12,8 @@ interface TrackedFile {
   visible: boolean;
   baselineSize: number;
 }
-
+const MAX_INITIAL_HEAD_BYTES = 64 * 1024;
+const MAX_TAIL_BYTES = 4 * 1024 * 1024;
 export class CodexSessionTracker {
   private readonly files = new Map<string, TrackedFile>();
   private readonly dismissed = new Set<string>();
@@ -22,7 +24,7 @@ export class CodexSessionTracker {
   private initialDiscoveryComplete = false;
 
   constructor(
-    private readonly sessionsRoot = path.join(os.homedir(), '.codex', 'sessions'),
+    private readonly sessionsRoot = path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'sessions'),
     private readonly sessionIndexPath = path.join(path.dirname(sessionsRoot), 'session_index.jsonl')
   ) {}
 
@@ -35,7 +37,7 @@ export class CodexSessionTracker {
       if (!tracked.visible) { continue; }
       if (!snapshot.sessionId || this.dismissed.has(snapshot.sessionId)) { continue; }
       if (snapshot.lastEventMs && now - snapshot.lastEventMs > 2 * 3600_000) { continue; }
-      if (!matchesWorkspace(snapshot.cwd, workspaceFolders)) { continue; }
+    if (!pathsShareWorkspace(snapshot.cwd, workspaceFolders)) { continue; }
       const previous = byId.get(snapshot.sessionId);
       if (!previous || snapshot.lastEventMs > previous.lastEventMs) { byId.set(snapshot.sessionId, snapshot); }
     }
@@ -70,6 +72,14 @@ export class CodexSessionTracker {
       .sort((a, b) => b.lastEventMs - a.lastEventMs)[0];
   }
 
+  getRolloutPath(id: string): string | undefined {
+    this.refresh();
+    const rawId = id.replace(/^codex:/, '');
+    return [...this.files.entries()]
+      .filter(([, tracked]) => tracked.snapshot.sessionId === rawId)
+      .sort(([, a], [, b]) => b.snapshot.lastEventMs - a.snapshot.lastEventMs)[0]?.[0];
+  }
+
   private refresh(): void {
     this.readSessionIndex();
     const now = Date.now();
@@ -82,10 +92,12 @@ export class CodexSessionTracker {
             const stat = fs.statSync(file);
             size = stat.size;
           } catch {}
-          this.files.set(file, {
-            offset: 0, remainder: '', snapshot: emptyCodexSnapshot(),
+          const tracked = {
+            offset: size, remainder: '', snapshot: emptyCodexSnapshot(),
             visible: this.initialDiscoveryComplete, baselineSize: size,
-          });
+          };
+          this.readInitial(file, tracked, size);
+          this.files.set(file, tracked);
         }
       }
       this.initialDiscoveryComplete = true;
@@ -102,17 +114,22 @@ export class CodexSessionTracker {
       this.indexedTitles.clear();
     }
     if (size === this.indexOffset) { return; }
-    const length = size - this.indexOffset;
-    const buffer = Buffer.alloc(length);
-    let fd: number | undefined;
+    let length = size - this.indexOffset;
+    let start = this.indexOffset;
+    let skippedPrefix = false;
+    if (length > MAX_TAIL_BYTES) {
+      start = size - MAX_TAIL_BYTES;
+      length = MAX_TAIL_BYTES;
+      this.indexRemainder = '';
+      skippedPrefix = true;
+    }
+    let text = '';
     try {
-      fd = fs.openSync(this.sessionIndexPath, 'r');
-      fs.readSync(fd, buffer, 0, length, this.indexOffset);
+      text = readRange(this.sessionIndexPath, start, length, skippedPrefix);
       this.indexOffset = size;
     } catch { return; }
-    finally { if (fd !== undefined) { try { fs.closeSync(fd); } catch {} } }
 
-    const parts = (this.indexRemainder + buffer.toString('utf8')).split(/\r?\n/);
+    const parts = (this.indexRemainder + text).split(/\r?\n/);
     this.indexRemainder = parts.pop() || '';
     for (const line of parts) {
       try {
@@ -134,20 +151,67 @@ export class CodexSessionTracker {
     }
     if (size === tracked.offset) { return; }
     if (!tracked.visible && size > tracked.baselineSize) { tracked.visible = true; }
-    const length = size - tracked.offset;
-    const buffer = Buffer.alloc(length);
-    let fd: number | undefined;
+    let length = size - tracked.offset;
+    let start = tracked.offset;
+    let skippedPrefix = false;
+    if (length > MAX_TAIL_BYTES) {
+      start = size - MAX_TAIL_BYTES;
+      length = MAX_TAIL_BYTES;
+      tracked.remainder = '';
+      skippedPrefix = true;
+    }
+    let text = '';
     try {
-      fd = fs.openSync(file, 'r');
-      fs.readSync(fd, buffer, 0, length, tracked.offset);
+      text = readRange(file, start, length, skippedPrefix);
       tracked.offset = size;
     } catch { return; }
-    finally { if (fd !== undefined) { try { fs.closeSync(fd); } catch {} } }
 
-    const parts = (tracked.remainder + buffer.toString('utf8')).split(/\r?\n/);
+    const parts = (tracked.remainder + text).split(/\r?\n/);
     tracked.remainder = parts.pop() || '';
     for (const line of parts) { applyCodexJsonlLine(tracked.snapshot, line); }
   }
+
+  private readInitial(file: string, tracked: TrackedFile, size: number): void {
+    if (size === 0) { return; }
+    if (size <= MAX_TAIL_BYTES) {
+      for (const line of readRange(file, 0, size, false).split(/\r?\n/)) {
+        applyCodexJsonlLine(tracked.snapshot, line);
+      }
+      return;
+    }
+    const headLength = Math.min(size, MAX_INITIAL_HEAD_BYTES);
+    for (const line of readRange(file, 0, headLength, false).split(/\r?\n/)) {
+      applyCodexJsonlLine(tracked.snapshot, line);
+    }
+    if (size > headLength) {
+      const tailStart = Math.max(headLength, size - MAX_TAIL_BYTES);
+      for (const line of readRange(file, tailStart, size - tailStart, tailStart > 0).split(/\r?\n/)) {
+        applyCodexJsonlLine(tracked.snapshot, line);
+      }
+    }
+  }
+}
+
+function readRange(file: string, start: number, length: number, discardPartialFirstLine: boolean): string {
+  const buffer = Buffer.alloc(length);
+  let fd: number | undefined;
+  let read = 0;
+  try {
+    fd = fs.openSync(file, 'r');
+    while (read < length) {
+      const count = fs.readSync(fd, buffer, read, length - read, start + read);
+      if (count === 0) { break; }
+      read += count;
+    }
+  } finally {
+    if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
+  }
+  let text = buffer.subarray(0, read).toString('utf8');
+  if (discardPartialFirstLine) {
+    const newline = text.indexOf('\n');
+    text = newline >= 0 ? text.slice(newline + 1) : '';
+  }
+  return text;
 }
 
 function discoverRecentJsonl(root: string, cutoffMs: number): string[] {
@@ -169,14 +233,4 @@ function discoverRecentJsonl(root: string, cutoffMs: number): string[] {
   };
   visit(root, 0);
   return found.sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, 30).map(item => item.file);
-}
-
-function matchesWorkspace(cwd: string, folders: string[]): boolean {
-  if (!cwd || folders.length === 0) { return true; }
-  const norm = (value: string) => value.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
-  const candidate = norm(cwd);
-  return folders.some(folder => {
-    const workspace = norm(folder);
-    return candidate === workspace || candidate.startsWith(`${workspace}\\`) || workspace.startsWith(`${candidate}\\`);
-  });
 }

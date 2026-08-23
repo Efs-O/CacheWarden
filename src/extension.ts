@@ -5,13 +5,21 @@ import { CacheWardenStatusBar } from './StatusBarItem';
 import { SidebarProvider } from './SidebarProvider';
 import { CacheWardenConfig } from './types';
 
+let activeManager: CacheKeepManager | undefined;
+let activeHookInstaller: HookInstaller | undefined;
+
+function boundedNumber(value: unknown, fallback: number, minimum: number, maximum: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
+}
+
 function getConfig(): CacheWardenConfig {
   const cfg = vscode.workspace.getConfiguration('cacheWarden');
   return {
-    ttlSeconds: cfg.get<number>('ttlSeconds', 280),
-    keepAliveDurationSeconds: cfg.get<number>('keepAliveDurationSeconds', 1800),
-    keepAliveMaxPings: cfg.get<number>('keepAliveMaxPings', 7),
-    targets: cfg.get<string[]>('targets', ['claude']),
+    ttlSeconds: boundedNumber(cfg.get('ttlSeconds'), 280, 30, 3600),
+    keepAliveDurationSeconds: boundedNumber(cfg.get('keepAliveDurationSeconds'), 1800, 0, 86400),
+    keepAliveMaxPings: Math.round(boundedNumber(cfg.get('keepAliveMaxPings'), 7, 1, 100)),
+    targets: [...new Set(cfg.get<string[]>('targets', ['claude']).filter(target => target === 'claude' || target === 'codex'))],
     hookEnabled: cfg.get<boolean>('hookEnabled', true),
     showStatusBar: cfg.get<boolean>('showStatusBar', true),
     claudePath: cfg.get<string>('claudePath', ''),
@@ -24,7 +32,10 @@ export function activate(context: vscode.ExtensionContext) {
   let config = getConfig();
 
   const hookInstaller = new HookInstaller();
+  hookInstaller.registerInstance();
+  activeHookInstaller = hookInstaller;
   const manager = new CacheKeepManager(hookInstaller, config);
+  activeManager = manager;
   const statusBar = new CacheWardenStatusBar();
   const sidebar = new SidebarProvider(
     context.extensionUri,
@@ -60,7 +71,12 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('cacheWarden.toggleArmed', () => { manager.toggle(); }),
+    vscode.commands.registerCommand('cacheWarden.toggleArmed', () => {
+      const armed = manager.toggle();
+      if (armed !== undefined) {
+        void vscode.window.showInformationMessage(`CacheWarden: Claude cache keep ${armed ? 'enabled' : 'disabled'}.`);
+      }
+    }),
     vscode.commands.registerCommand('cacheWarden.resetStreak', () => { manager.resetStreak(); }),
     vscode.commands.registerCommand('cacheWarden.sendPingNow', () => { void manager.forcePing(); })
   );
@@ -73,7 +89,12 @@ export function activate(context: vscode.ExtensionContext) {
   statusBar.update(initial[0], manager.isArmed);
   sidebar.push(initial);
 
-  context.subscriptions.push(manager, statusBar);
+  context.subscriptions.push(manager, statusBar, sidebar);
 }
 
-export function deactivate() {}
+export function deactivate() {
+  activeManager?.dispose();
+  activeManager = undefined;
+  activeHookInstaller?.releaseInstance();
+  activeHookInstaller = undefined;
+}

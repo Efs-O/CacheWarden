@@ -2,34 +2,76 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
 
 const HOOK_ID = 'cache-warden-keepalive';
 
 export class HookInstaller {
-  private readonly claudeDir = path.join(os.homedir(), '.claude');
-  private readonly settingsPath = path.join(this.claudeDir, 'settings.json');
-  readonly scriptPath = path.join(this.claudeDir, `${HOOK_ID}.js`);
-  readonly stateDir = path.join(this.claudeDir, 'cache-warden');
-  readonly sessionsDir = path.join(this.stateDir, 'sessions');
-  readonly trashDir = path.join(this.stateDir, 'trash');
+  private readonly settingsPath: string;
+  readonly scriptPath: string;
+  readonly stateDir: string;
+  readonly sessionsDir: string;
+  readonly trashDir: string;
+  private readonly instanceId = `${process.pid}-${randomUUID()}`;
+  private instanceRegistered = false;
+
+  constructor(private readonly claudeDir = path.join(os.homedir(), '.claude')) {
+    this.settingsPath = path.join(claudeDir, 'settings.json');
+    this.scriptPath = path.join(claudeDir, `${HOOK_ID}.js`);
+    this.stateDir = path.join(claudeDir, 'cache-warden');
+    this.sessionsDir = path.join(this.stateDir, 'sessions');
+    this.trashDir = path.join(this.stateDir, 'trash');
+  }
+
+  registerInstance(): void {
+    const instancesDir = path.join(this.stateDir, 'instances');
+    fs.mkdirSync(instancesDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(instancesDir, `${this.instanceId}.json`),
+      JSON.stringify({ pid: process.pid, createdAt: Date.now() }),
+      'utf8'
+    );
+    this.instanceRegistered = true;
+  }
+
+  releaseInstance(): void {
+    if (!this.instanceRegistered) { return; }
+    this.instanceRegistered = false;
+    const instancesDir = path.join(this.stateDir, 'instances');
+    try { fs.rmSync(path.join(instancesDir, `${this.instanceId}.json`), { force: true }); } catch {}
+    if (!this.hasLiveInstances(instancesDir)) { this.uninstall(true); }
+  }
 
   install(intervalSeconds: number, maxLoops: number, keepAliveDurationSeconds: number, claudePath = ''): void {
+    const settings = this.readSettings();
+    const nextSettings = this.withHooks(settings);
     fs.mkdirSync(this.claudeDir, { recursive: true });
-    fs.writeFileSync(this.scriptPath, buildScript(intervalSeconds, maxLoops, keepAliveDurationSeconds, claudePath), 'utf8');
+    fs.writeFileSync(
+      this.scriptPath,
+      buildScript(intervalSeconds, maxLoops, keepAliveDurationSeconds, claudePath, this.stateDir),
+      'utf8'
+    );
     // Legacy single-session state files from <= v0.1.x
     try { fs.rmSync(path.join(this.stateDir, 'gen'), { force: true }); } catch {}
     try { fs.rmSync(path.join(this.stateDir, 'last_ping'), { force: true }); } catch {}
-    this.upsertHooks();
+    this.writeSettings(nextSettings);
   }
 
-  uninstall(): void {
+  uninstall(removeFiles = false): void {
     this.removeHooks();
+    this.cancelAllChains();
+    if (removeFiles) {
+      try { fs.rmSync(this.scriptPath, { force: true }); } catch {}
+      try { fs.rmSync(this.stateDir, { recursive: true, force: true }); } catch {}
+    }
   }
 
   isInstalled(): boolean {
     try {
       const s = JSON.parse(fs.readFileSync(this.settingsPath, 'utf8'));
-      return s.hooks?.Stop?.some((e: any) => e.hooks?.[0]?.command?.includes(HOOK_ID)) ?? false;
+      return s.hooks?.Stop?.some((entry: any) =>
+        entry.hooks?.some((hook: any) => String(hook?.command || '').includes(HOOK_ID))
+      ) ?? false;
     } catch { return false; }
   }
 
@@ -54,14 +96,18 @@ export class HookInstaller {
 
   /** Path to a per-session marker, sanitized to match the hook's sdirFor(). */
   private sessionFile(sid: string, name: string): string {
-    const safe = String(sid).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const safe = safeSessionId(sid);
+    if (!safe) { throw new Error('Invalid Claude session ID'); }
     return path.join(this.sessionsDir, safe, name);
   }
 
   /** Pause/resume a single session without touching the global hook (so other sessions keep going). */
   pauseSession(sid: string): void {
-    const f = this.sessionFile(sid, 'paused');
-    try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, String(Date.now())); } catch {}
+    try {
+      const f = this.sessionFile(sid, 'paused');
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, String(Date.now()));
+    } catch {}
   }
 
   resumeSession(sid: string): void {
@@ -80,7 +126,8 @@ export class HookInstaller {
    * Trash sits beside sessions/ so getStates() and the hook's pruner never scan it.
    */
   removeSession(sid: string): string | null {
-    const safe = String(sid).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const safe = safeSessionId(sid);
+    if (!safe) { return null; }
     const src = path.join(this.sessionsDir, safe);
     try {
       if (!fs.existsSync(src)) { return null; }
@@ -94,7 +141,8 @@ export class HookInstaller {
 
   /** Undo a removeSession(): move the trashed dir back to its session slot. */
   restoreSession(sid: string, token: string): void {
-    const safe = String(sid).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const safe = safeSessionId(sid);
+    if (!safe || !token.startsWith(`${safe}__`) || !/^\d+$/.test(token.slice(safe.length + 2))) { return; }
     const src = path.join(this.trashDir, token);
     const dst = path.join(this.sessionsDir, safe);
     try { if (fs.existsSync(src)) { fs.renameSync(src, dst); } } catch {}
@@ -113,53 +161,133 @@ export class HookInstaller {
     } catch {}
   }
 
-  private upsertHooks(): void {
-    let s: any = {};
-    try { s = JSON.parse(fs.readFileSync(this.settingsPath, 'utf8')); } catch {}
-
+  private withHooks(settings: any): any {
+    const s = removeOwnedHooks(settings);
     if (!s.hooks) { s.hooks = {}; }
 
-    const stopCmd = `node "${this.scriptPath}"`;
-    const resetCmd = `node "${this.scriptPath}" --reset`;
+    if (!s.hooks || typeof s.hooks !== 'object' || Array.isArray(s.hooks)) {
+      throw new Error(`Claude settings hooks must contain an object: ${this.settingsPath}`);
+    }
 
+    const stopCmd = `${quoteHookArg(process.execPath)} ${quoteHookArg(this.scriptPath)}`;
+    const resetCmd = `${stopCmd} --reset`;
+
+    if (s.hooks.Stop !== undefined && !Array.isArray(s.hooks.Stop)) {
+      throw new Error(`Claude Stop hooks must contain an array: ${this.settingsPath}`);
+    }
     if (!s.hooks.Stop) { s.hooks.Stop = []; }
-    s.hooks.Stop = s.hooks.Stop.filter((e: any) => !e.hooks?.[0]?.command?.includes(HOOK_ID));
     s.hooks.Stop.push({ hooks: [{ type: 'command', command: stopCmd }] });
 
+    if (s.hooks.UserPromptSubmit !== undefined && !Array.isArray(s.hooks.UserPromptSubmit)) {
+      throw new Error(`Claude UserPromptSubmit hooks must contain an array: ${this.settingsPath}`);
+    }
     if (!s.hooks.UserPromptSubmit) { s.hooks.UserPromptSubmit = []; }
-    s.hooks.UserPromptSubmit = s.hooks.UserPromptSubmit.filter((e: any) => !e.hooks?.[0]?.command?.includes(HOOK_ID));
     s.hooks.UserPromptSubmit.push({ hooks: [{ type: 'command', command: resetCmd }] });
-
-    fs.writeFileSync(this.settingsPath, JSON.stringify(s, null, 2), 'utf8');
+    return s;
   }
 
   private removeHooks(): void {
-    let s: any = {};
-    try { s = JSON.parse(fs.readFileSync(this.settingsPath, 'utf8')); } catch { return; }
+    if (!fs.existsSync(this.settingsPath)) { return; }
+    const settings = this.readSettings();
+    const next = removeOwnedHooks(settings);
+    if (JSON.stringify(next) !== JSON.stringify(settings)) { this.writeSettings(next); }
+  }
 
-    for (const event of ['Stop', 'UserPromptSubmit'] as const) {
-      if (s.hooks?.[event]) {
-        s.hooks[event] = s.hooks[event].filter((e: any) => !e.hooks?.[0]?.command?.includes(HOOK_ID));
-        if (s.hooks[event].length === 0) { delete s.hooks[event]; }
+  private cancelAllChains(): void {
+    try {
+      for (const sid of fs.readdirSync(this.sessionsDir)) {
+        const genPath = path.join(this.sessionsDir, sid, 'gen');
+        try { fs.writeFileSync(genPath, `disabled-${Date.now()}`, 'utf8'); } catch {}
       }
-    }
-    if (s.hooks && Object.keys(s.hooks).length === 0) { delete s.hooks; }
+    } catch {}
+  }
 
-    fs.writeFileSync(this.settingsPath, JSON.stringify(s, null, 2), 'utf8');
+  private readSettings(): any {
+    if (!fs.existsSync(this.settingsPath)) { return {}; }
+    const parsed = JSON.parse(fs.readFileSync(this.settingsPath, 'utf8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error(`Claude settings must contain a JSON object: ${this.settingsPath}`);
+    }
+    return parsed;
+  }
+
+  private writeSettings(settings: any): void {
+    fs.mkdirSync(this.claudeDir, { recursive: true });
+    const tempPath = `${this.settingsPath}.cache-warden-${process.pid}-${Date.now()}.tmp`;
+    let mode = 0o600;
+    try { mode = fs.statSync(this.settingsPath).mode & 0o777; } catch {}
+    try {
+      fs.writeFileSync(tempPath, `${JSON.stringify(settings, null, 2)}\n`, { encoding: 'utf8', mode });
+      fs.renameSync(tempPath, this.settingsPath);
+    } finally {
+      try { fs.rmSync(tempPath, { force: true }); } catch {}
+    }
+  }
+
+  private hasLiveInstances(instancesDir: string): boolean {
+    let live = false;
+    try {
+      for (const filename of fs.readdirSync(instancesDir)) {
+        const file = path.join(instancesDir, filename);
+        try {
+          const pid = Number(JSON.parse(fs.readFileSync(file, 'utf8')).pid);
+          if (Number.isInteger(pid) && pid > 0 && isProcessAlive(pid)) { live = true; }
+          else { fs.rmSync(file, { force: true }); }
+        } catch { try { fs.rmSync(file, { force: true }); } catch {} }
+      }
+    } catch {}
+    return live;
   }
 }
 
-export function buildScript(intervalSeconds: number, maxLoops: number, keepAliveDurationSeconds: number, claudePathOverride: string): string {
-  const stateDir = path.join(os.homedir(), '.claude', 'cache-warden').replace(/\\/g, '\\\\');
+function isProcessAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; }
+  catch (error: any) { return error?.code === 'EPERM'; }
+}
+
+function safeSessionId(value: unknown): string {
+  const id = String(value || '');
+  return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(id) ? id : '';
+}
+
+function removeOwnedHooks(settings: any): any {
+  const next = JSON.parse(JSON.stringify(settings));
+  for (const event of ['Stop', 'UserPromptSubmit'] as const) {
+    if (!Array.isArray(next.hooks?.[event])) { continue; }
+    next.hooks[event] = next.hooks[event]
+      .map((entry: any) => {
+        if (!Array.isArray(entry?.hooks)) { return entry; }
+        const hooks = entry.hooks.filter((hook: any) => !String(hook?.command || '').includes(HOOK_ID));
+        return hooks.length === entry.hooks.length ? entry : { ...entry, hooks };
+      })
+      .filter((entry: any) => !Array.isArray(entry?.hooks) || entry.hooks.length > 0);
+    if (next.hooks[event].length === 0) { delete next.hooks[event]; }
+  }
+  if (next.hooks && Object.keys(next.hooks).length === 0) { delete next.hooks; }
+  return next;
+}
+
+function quoteHookArg(value: string): string {
+  if (process.platform === 'win32') { return `"${value.replace(/"/g, '""')}"`; }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export function buildScript(
+  intervalSeconds: number,
+  maxLoops: number,
+  keepAliveDurationSeconds: number,
+  claudePathOverride: string,
+  stateRoot = path.join(os.homedir(), '.claude', 'cache-warden')
+): string {
   return `#!/usr/bin/env node
 'use strict';
 // ${HOOK_ID}
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn, execSync } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 
-const stateDir = '${stateDir}';
+const stateDir = ${JSON.stringify(stateRoot)};
 const sessionsDir = path.join(stateDir, 'sessions');
 
 // Resolve the Claude Code binary at runtime so this works on any machine (no hardcoded user path).
@@ -181,8 +309,8 @@ function resolveClaude() {
   tries.push(path.join(os.homedir(), '.claude', 'local', exe));
   for (const t of tries) { try { if (t && fs.existsSync(t)) return t; } catch {} }
   try {
-    const which = isWin ? 'where' : 'which';
-    const out = execSync(which + ' ' + exe, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split(/\\r?\\n/)[0];
+    const which = isWin ? 'where.exe' : 'which';
+    const out = execFileSync(which, [exe], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split(/\\r?\\n/)[0];
     if (out && fs.existsSync(out)) return out;
   } catch {}
   return exe; // last resort: rely on PATH at spawn time
@@ -190,7 +318,9 @@ function resolveClaude() {
 const CLAUDE = resolveClaude();
 const MAX_LOOPS = ${maxLoops};
 const MAX_IDLE_MS = ${Math.max(0, keepAliveDurationSeconds) * 1000};
-const INTERVAL_MS = parseInt(process.env.CACHE_WARDEN_INTERVAL_MS || '', 10) || ${intervalSeconds * 1000};
+const intervalOverride = parseInt(process.env.CACHE_WARDEN_INTERVAL_MS || '', 10);
+const INTERVAL_MS = Number.isFinite(intervalOverride) && intervalOverride >= 1000 && intervalOverride <= 3600000
+  ? intervalOverride : ${intervalSeconds * 1000};
 // Inert prompt: a bare "." makes the model resume the interrupted task (it attempted Edits in forks).
 const PING_MSG = '[AW_TURN_TYPE: keep-alive]\\nThis is a cache keep-alive maintenance turn.\\nDo not use tools.\\nDo not post to the board.\\nDo not inspect or edit files.\\nDo not emit natural-language prose.\\nIf the CLI requires a reply, emit only the inert marker [AW_KEEPALIVE_OK].';
 
@@ -200,8 +330,14 @@ if (process.env.CACHE_WARDEN_PING) process.exit(0);
 
 function logErr(e) { try { fs.mkdirSync(stateDir, { recursive: true }); fs.writeFileSync(path.join(stateDir, 'last_error'), new Date().toISOString() + ' ' + String(e && e.stack || e)); } catch {} }
 // State is per session so parallel sessions (e.g. 3 VS Code windows) each keep their own chain.
-function sdirFor(sid) { return path.join(sessionsDir, String(sid).replace(/[^a-zA-Z0-9._-]/g, '_')); }
+function safeId(value) { const id = String(value || ''); return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(id) ? id : ''; }
+function sdirFor(sid) { const safe = safeId(sid); return safe ? path.join(sessionsDir, safe) : ''; }
+function isInside(parent, candidate) {
+  const relative = path.relative(path.resolve(parent), path.resolve(candidate));
+  return relative === '' || (relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
+}
 function readGen(sdir) { try { return fs.readFileSync(path.join(sdir, 'gen'), 'utf8'); } catch { return ''; } }
+function readMeta(sdir) { try { return JSON.parse(fs.readFileSync(path.join(sdir, 'meta'), 'utf8')); } catch { return {}; } }
 function writeGen(sdir, t) { try { fs.mkdirSync(sdir, { recursive: true }); fs.writeFileSync(path.join(sdir, 'gen'), t); } catch {} }
 function writeMeta(sdir, cwd, transcriptPath) { try { fs.mkdirSync(sdir, { recursive: true }); fs.writeFileSync(path.join(sdir, 'meta'), JSON.stringify({ cwd: cwd || '', transcriptPath: transcriptPath || '', t: Date.now() })); } catch {} }
 function pruneSessions() {
@@ -218,12 +354,13 @@ function pruneSessions() {
 
 // projDir from the hook payload can be empty; fall back to scanning all project dirs.
 function findForkFile(projDir, forkId) {
+  if (!safeId(forkId)) return '';
   const name = forkId + '.jsonl';
-  if (projDir) {
+  const root = path.join(os.homedir(), '.claude', 'projects');
+  if (projDir && isInside(root, projDir)) {
     const p = path.join(projDir, name);
     if (fs.existsSync(p)) return p;
   }
-  const root = path.join(os.homedir(), '.claude', 'projects');
   try {
     for (const d of fs.readdirSync(root)) {
       const p = path.join(root, d, name);
@@ -236,9 +373,9 @@ function findForkFile(projDir, forkId) {
 if (process.argv[2] === '--restart') {
   const sessionId = process.argv[3] || '';
   const sdir = sdirFor(sessionId);
-  if (!sessionId || fs.existsSync(path.join(sdir, 'paused'))) process.exit(0);
+  if (!sdir || fs.existsSync(path.join(sdir, 'paused'))) process.exit(0);
   let projDir = '';
-  try { projDir = path.dirname(JSON.parse(fs.readFileSync(path.join(sdir, 'meta'), 'utf8')).transcriptPath || ''); } catch {}
+  try { projDir = path.dirname(readMeta(sdir).transcriptPath || ''); } catch {}
   const token = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   writeGen(sdir, token);
   spawn(process.execPath, [__filename, '--bg', sessionId, '0', projDir, token, String(Date.now())],
@@ -251,6 +388,7 @@ if (process.argv[2] === '--restart') {
   const token = process.argv[6] || '';
   const idleStartedAt = parseInt(process.argv[7] || '', 10) || Date.now();
   const sdir = sdirFor(sessionId);
+  if (!sdir) process.exit(0);
 
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, INTERVAL_MS);
 
@@ -263,26 +401,48 @@ if (process.argv[2] === '--restart') {
   if (fs.existsSync(path.join(sdir, 'paused'))) process.exit(0);
 
   try {
+    const workingDir = String(readMeta(sdir).cwd || '');
+    if (!path.isAbsolute(workingDir) || !fs.statSync(workingDir).isDirectory()) {
+      throw new Error('Claude session working directory is unavailable');
+    }
     // NOT --bare: it skips auth ("Not logged in") so no API call happens. disableAllHooks prevents
     // the fork's own Stop/UserPromptSubmit hooks from re-arming loops (env vars don't reach hooks).
-    const ka = spawn(CLAUDE, ['--settings', '{"disableAllHooks":true}', '--tools', '', '--resume', sessionId, '--fork-session', '--print', PING_MSG, '--output-format', 'json'],
-      { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true,
+    const ka = spawn(CLAUDE, [
+      '--safe-mode', '--disable-slash-commands', '--no-chrome', '--strict-mcp-config',
+      '--settings', '{"disableAllHooks":true}', '--tools', '', '--resume', sessionId,
+      '--fork-session', '--print', PING_MSG, '--output-format', 'json'
+    ],
+      { cwd: workingDir, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
         env: Object.assign({}, process.env, { CACHE_WARDEN_PING: '1' }) });
     ka.stdin.end();
     let out = '';
-    ka.stdout.on('data', (d) => { out += d; });
+    let err = '';
+    let finished = false;
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; try { ka.kill(); } catch {} }, 90000);
+    ka.stdout.on('data', (d) => { if (out.length < 1000000) out += d; });
+    ka.stderr.on('data', (d) => { if (err.length < 100000) err += d; });
     ka.on('close', (code) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
       let ok = false;
       try {
-        const forkId = JSON.parse(out).session_id;
-        ok = true;
-        if (forkId && forkId !== sessionId) {
-          const f = findForkFile(projDir, forkId);
-          if (f) fs.rmSync(f, { force: true });
+        if (timedOut) throw new Error('Claude keep-alive timed out after 90 seconds');
+        if (code !== 0) throw new Error('Claude exited with code ' + code + ': ' + err.slice(0, 200));
+        const response = JSON.parse(out);
+        const forkId = response.session_id;
+        if (!safeId(forkId) || forkId === sessionId) throw new Error('Claude did not create a safe throwaway fork');
+        const f = findForkFile(projDir, forkId);
+        if (!f) throw new Error('Claude throwaway fork could not be located for cleanup');
+        fs.rmSync(f, { force: true });
+        if (String(response.result || '').trim() !== '[AW_KEEPALIVE_OK]') {
+          throw new Error('Claude did not return the expected inert acknowledgement');
         }
+        ok = true;
         try { fs.writeFileSync(path.join(sdir, 'last_ping'), JSON.stringify({ t: Date.now(), count: count + 1 })); } catch {}
       } catch (e) {
-        logErr('ping failed, exit ' + code + ', out: ' + String(out).slice(0, 200));
+        logErr('ping failed, exit ' + code + ': ' + String(e && e.stack || e));
       }
       // Chain only after a successful ping (next TTL window starts at ping completion).
       if (ok && count + 1 < MAX_LOOPS && readGen(sdir) === token && !fs.existsSync(path.join(sdir, 'paused'))) {
@@ -291,7 +451,7 @@ if (process.argv[2] === '--restart') {
       }
       process.exit(0);
     });
-    ka.on('error', (e) => { logErr(e); process.exit(0); });
+    ka.on('error', (e) => { if (!finished) { finished = true; clearTimeout(timeout); logErr(e); } process.exit(0); });
   } catch (e) {
     logErr(e);
     process.exit(0);
@@ -305,6 +465,7 @@ if (process.argv[2] === '--restart') {
     try {
       const input = JSON.parse(stdinData);
       const sdir = sdirFor(input.session_id);
+      if (!sdir) throw new Error('invalid session id');
       writeMeta(sdir, input.cwd, input.transcript_path);
       if (isReset) {
         // User prompt in this session: kill only this session's chain (chat refreshes its own cache).

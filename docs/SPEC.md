@@ -15,7 +15,8 @@ The hooks maintain per-session state under `~/.claude/cache-warden/sessions/`.
 - A real user prompt invalidates that session's existing keep-alive chain.
 - A completed response starts a per-session countdown.
 - At `ttlSeconds`, the generated hook resumes the session in a throwaway fork,
-  with hooks disabled and an inert prompt.
+  with Claude Code safe mode, hooks, skills, plugins, MCP, browser integration,
+  slash commands, and built-in tools disabled, using an inert prompt.
 - The chain ends at either `keepAliveMaxPings` or
   `keepAliveDurationSeconds`, measured from the end of the real response.
 - Cards can pause/resume or reset one session. A reset supersedes that session's
@@ -30,8 +31,10 @@ silent baseline after extension activation; a card appears only after new activi
 `cacheWarden.codexKeepAlive` is opt-in because each maintenance turn consumes
 Codex usage. When enabled and a session has been idle for `ttlSeconds`,
 CacheWarden runs `codex exec resume` with user configuration and rules ignored,
-a read-only sandbox, and a 90-second timeout. It accepts a result only if it is
-for the original thread, completes successfully, and has no tool calls.
+an ephemeral read-only sandbox, project instructions and external tools disabled,
+and a 90-second timeout. It accepts a result only if it is for the original
+thread, completes successfully with the exact inert acknowledgement, and has no
+tool calls. Ephemeral execution keeps the maintenance turn out of rollout files.
 
 If Codex reports an active thread writer, CacheWarden treats that as transient:
 it does not issue a competing write, waits 30 seconds, then re-evaluates the
@@ -70,6 +73,10 @@ Each card represents one session.
   files.
 - Claude runs in a fork and removes the throwaway fork transcript after success.
 - Codex uses a read-only sandbox and validates thread identity, completion, and
-  zero tool calls.
+  zero tool calls, while disabling project instructions, hooks, MCP servers,
+  shell tools, and web search for the maintenance invocation.
 - Codex writer conflicts do not make the extension bypass Codex locking; they
   simply postpone automatic work.
+- Claude settings updates are atomic, preserve unrelated hooks, and fail without
+  overwriting malformed JSON. Disarming invalidates detached keep-alive chains.
+- Transcript reads are bounded and never write to Claude or Codex transcripts.

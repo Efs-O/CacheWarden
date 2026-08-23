@@ -175,7 +175,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 2,
     transition: 'width 0.9s linear',
   },
-  row: { display: 'flex', gap: 6, marginBottom: 6 },
+  row: { display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
   btn: {
     fontSize: 11,
     padding: '3px 8px',
