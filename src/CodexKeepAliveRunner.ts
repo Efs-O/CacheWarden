@@ -260,7 +260,9 @@ export function resolveCodex(override: string): string {
   if (override) { return override; }
   if (process.platform !== 'win32') { return 'codex'; }
   try {
-    const candidates = execFileSync('where.exe', ['codex'], { encoding: 'utf8', windowsHide: true })
+    const candidates = execFileSync('where.exe', ['codex'], {
+      encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
+    })
       .split(/\r?\n/).map(value => value.trim()).filter(Boolean);
     const native = candidates.find(candidate => candidate.toLowerCase().endsWith('.exe') && fs.existsSync(candidate));
     if (native) { return native; }

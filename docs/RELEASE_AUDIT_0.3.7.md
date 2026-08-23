@@ -36,6 +36,14 @@ VSIX. The handoff and this audit document are also excluded by `.vscodeignore`.
 | Whitespace check | Pass | `git diff --check` |
 | Secret/machine-path scan | Pass | No credentials, private keys, or hardcoded user-home paths found in release inputs |
 
+The first CI run for release-source commit `bf27701b3f2734a3127f17f7731c80c56e4ae472`
+passed on Ubuntu and macOS but exposed a Windows-only portability error in a
+test: a clean runner correctly returned the supported `codex.exe` PATH fallback,
+while the assertion required an installed file. The assertion now accepts that
+fallback and still requires existence for resolved absolute binaries; the
+expected `where.exe` miss is also silenced. Publication remained paused pending
+a clean replacement matrix.
+
 The current canonical package preview contains eight extension files:
 `CHANGELOG.md`, `LICENSE`, `README.md`, `package.json`, both production bundles,
 and the two release icons. Source, tests, docs, project scaffolding, source maps,

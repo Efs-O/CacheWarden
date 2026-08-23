@@ -139,8 +139,12 @@ test('builds an ephemeral, read-only Codex resume with external instructions and
   assert.deepEqual(args.slice(-3, -1), ['resume', 'session-1']);
 });
 
-test('resolves an installed native Codex executable on Windows', { skip: process.platform !== 'win32' }, () => {
+test('resolves an installed native Codex executable or the PATH fallback on Windows', { skip: process.platform !== 'win32' }, () => {
   const executable = resolveCodex('');
   assert.match(executable, /codex\.exe$/i);
-  assert.equal(require('node:fs').existsSync(executable), true);
+  if (path.isAbsolute(executable)) {
+    assert.equal(fs.existsSync(executable), true);
+  } else {
+    assert.equal(executable.toLowerCase(), 'codex.exe', 'a clean machine falls back to PATH');
+  }
 });
