@@ -1,8 +1,8 @@
 # CacheWarden 0.3.7 release audit
 
 Date: 2026-08-23
-Status: automated audit passed; manual extension-host smoke, remote CI, final
-artifact inspection, and publication are still pending.
+Status: version 0.3.7 is published and publicly verified on both registries.
+Completed evidence and remaining manual coverage gaps are recorded below.
 
 ## Provenance
 
@@ -28,11 +28,14 @@ VSIX. The handoff and this audit document are also excluded by `.vscodeignore`.
 | Full dependency audit | Pass | `npm audit`; 0 vulnerabilities |
 | Production dependency audit | Pass | `npm audit --omit=dev`; 0 vulnerabilities |
 | Canonical local gate | Pass | `npm run ci`; type checks against the declared VS Code 1.85 minimum, 31 tests, production build, and bundle-load smoke passed |
+| Replacement remote CI | Pass | Commit `0fdf8957141bf64629f97c841831b0116913743f`; GitHub run `32657734535` passed on Ubuntu, Windows, and macOS |
 | Codex CLI argument compatibility | Pass | Installed `codex-cli 0.147.0` accepted the generated read-only ephemeral resume arguments through `resume --help` without an API call |
 | Claude CLI argument compatibility | Pass | Installed Claude Code 2.1.185 exposes the safe-mode, hook/tool disable, resume, fork, print, and JSON flags used by the generated hook |
 | Marketplace credential preflight | Pass | `npx vsce verify-pat Efsoo` verified the publisher PAT without printing it |
 | Open VSX credential preflight | Pass | `npx ovsx verify-pat Efsoo` confirmed publish access without printing the token |
 | Package inclusion preview | Pass | `npx vsce ls --tree`; only manifest/listing files, `dist` bundles, and release icons remain |
+| Canonical package | Pass | `cache-warden-release.vsix`; 134,665 bytes; 10 ZIP entries / 8 extension files; SHA-256 `FB3888CB7C156EA3C43B227A09F55E5DF582A762B96F1A43C5EBFA9A40632991` |
+| Clean VSIX activation | Pass | Isolated VS Code profile installed `efsoo.cache-warden@0.3.7` from the canonical artifact and activated it without a CacheWarden or CSP error |
 | Whitespace check | Pass | `git diff --check` |
 | Secret/machine-path scan | Pass | No credentials, private keys, or hardcoded user-home paths found in release inputs |
 
@@ -43,6 +46,12 @@ while the assertion required an installed file. The assertion now accepts that
 fallback and still requires existence for resolved absolute binaries; the
 expected `where.exe` miss is also silenced. Publication remained paused pending
 a clean replacement matrix.
+
+Replacement release commit `0fdf8957141bf64629f97c841831b0116913743f`
+passed all three jobs in GitHub Actions run `32657734535`. The Node 20 runtime
+deprecation annotation emitted by `actions/checkout@v4` and
+`actions/setup-node@v4` is upstream workflow-action maintenance and did not
+affect any job; it is a follow-up rather than a 0.3.7 blocker.
 
 The current canonical package preview contains eight extension files:
 `CHANGELOG.md`, `LICENSE`, `README.md`, `package.json`, both production bundles,
@@ -181,8 +190,8 @@ unrelated command shares the same hook entry. After disabling the hook setting
 and after closing the last development-host window, verify those two commands
 are gone while the unrelated entry remains.
 
-- [ ] Clean VSIX install and first activation
-- [ ] Claude tracking with hook enabled and disabled
+- [x] Clean VSIX install and first activation (Windows, 2026-08-23)
+- [x] Claude tracking with hook enabled and disabled (Windows, 2026-08-23)
 - [ ] Upgrade from an older CacheWarden hook
 - [x] Preservation of unrelated Claude hook entries (Windows, 2026-08-23)
 - [ ] Claude reset, pause/resume, dismiss, and undo
@@ -202,16 +211,27 @@ observed sidebar/status text, and any relevant notification. Do not paste
 transcript contents, credentials, or the full Claude settings file into this
 document.
 
-## Remaining release sequence
+## Release completion
 
-1. Complete and record the manual smoke matrix above.
-2. Review the final diff and decide PR versus fast-forward release provenance.
-3. With explicit authorization, commit and push the audited source.
-4. Require all three GitHub CI matrix jobs to pass for that exact commit.
-5. Run `npm run package` once, then record and inspect the resulting
-   `cache-warden-release.vsix` filename, internal version, file count, byte size,
-   SHA-256, manifest, packaged README, and archive exclusions.
-6. With separate explicit publication authorization, upload that exact hashed
-   VSIX to the Visual Studio Marketplace and Open VSX.
-7. Poll both public registry APIs until version 0.3.7 and the intended listing
-   content are visible.
+The user explicitly authorized staging, committing, pushing, creating a new
+local VSIX, and publishing it to both registries. The release was completed as
+follows:
+
+1. Release-source commit `bf27701b3f2734a3127f17f7731c80c56e4ae472`
+   was pushed to `main`. Its first CI run exposed the clean-Windows test issue
+   documented above; packaging and publication remained paused.
+2. Replacement release commit `0fdf8957141bf64629f97c841831b0116913743f`
+   was pushed and passed the Ubuntu, Windows, and macOS matrix.
+3. `npm run package` was run once. The resulting artifact was inspected as
+   version `0.3.7`, publisher `Efsoo`, with no source, tests, docs, lockfile,
+   source maps, `FORGE.md`, or nested VSIX content.
+4. A clean isolated profile installed and activated that exact VSIX.
+5. The unchanged artifact was accepted by the Visual Studio Marketplace and
+   Open VSX. Both public version-specific downloads matched the local SHA-256.
+   Marketplace's public latest-version index reported `0.3.7` at
+   2026-08-23 18:30:19 UTC; Open VSX reported `0.3.7` published at
+   2026-08-23 18:24:27 UTC. Both version-specific README assets contained the
+   intended isolation/Open VSX copy and no stale 0.3.6 install filename.
+
+Unchecked manual scenarios above remain explicit follow-up coverage gaps. They
+were not silently converted into passes when the user authorized publication.
